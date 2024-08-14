@@ -7,9 +7,11 @@
 (
 	struct BatchGLBConverterWrapper (
 		selfPath = getFilenamePath (getThisScriptFilename()),
+		texturesQueueNames = #(),
+		normalsQueueNames = #(),
 		texturesQueue = #(),
 		normalsQueue = #(),
-			
+		
 		fn instnceDuplicateMaps = (
 			local names = #()
 			local maps = #()
@@ -55,6 +57,35 @@
 			hiddenDosCommand cmd exitcode:&exitcode	
 			
 			sysInfo.currentDir = curDir 
+		),
+		
+		fn convertImageToJPG f isDelete: false = (
+			local convertexe = selfPath + "convert.exe"
+			local tmpDir = @"C:\temp\"
+			local tmpConvertexe = tmpDir + "convert.exe"
+			makeDir tmpDir
+			copyFile convertexe tmpConvertexe
+			
+			local p = getFilenamePath f
+			local n = getFilenameFile f
+			local ext = getFilenameType f
+			
+			local exe = tmpConvertexe
+			
+			local ff = p + n + ".jpg"
+			
+			local curDir = sysInfo.currentDir
+			sysInfo.currentDir = selfPath	
+			
+			local cmd = exe + " \"" + f + "\" \"" + ff + "\""									
+			hiddenDosCommand cmd exitcode:&exitcode			
+			sysInfo.currentDir = curDir
+			
+			if (isDelete and ext != ".jpg") do deleteFile f
+			
+			optimizeImages files: #(ff)
+			
+			return ff
 		),
 		
 		fn resizeImage f maxSize: 2048 type: #jpg = (
@@ -155,7 +186,26 @@
 			return n
 		),*/
 		
-		fn convertBumpToNormal t = (			
+		fn getMapFullPath f = (
+			return mapPaths.getFullFilePath (filenameFromPath f)
+		),
+		
+		fn cacheBitmap t resize: true = (
+			local f = t.filename
+			if (f == undefined or f == "") do return false
+			local ff = generateCacheFilename()
+			f = getMapFullPath f
+			
+			copyFile f ff
+			
+			if (resize) do resizeImage ff
+			
+			t.filename = ff
+			
+			return t
+		),
+		
+		fn convertBumpToNormal t = (
 			if (t == undefined) do return false
 			
 			local normalmap = selfPath + "normalmap.exe"
@@ -166,11 +216,16 @@
 			
 			local exe = tmpNormalmap
 			
-			local bt = renderTargetMap t isReplace: false type: #png
+			local bt = undefined
+			if (classOf t == Bitmaptexture) then (
+				bt = cacheBitmap t
+			) else (
+				bt = renderTargetMap t isReplace: false type: #png
+			)
 			
 			local f = bt.filename
-			local ff = generateCacheFilename()
-		
+			local ff = generateCacheFilename type: #png
+			
 			local p = getFilenamePath f
 			makeDir p all: true
 			
@@ -183,33 +238,42 @@
 			
 			sysInfo.currentDir = curDir 
 			
-			optimizeImages files: #(ff)
+			local nn = convertImageToJPG ff
+			deleteFile ff
 			
-			local n = Bitmaptexture filename: ff
+			optimizeImages files: #(nn)
 			
-			replaceInstances t n
 			deleteFile f
 			
-			return n
-		),
-		
-		fn cacheBitmap t = (
-			local f = t.filename
-			if (f == undefined or f == "") do return false
-			local ff = generateCacheFilename()
+			if (classOf t == Bitmaptexture) then (
+				bt.filename = nn
+				return bt
+			) 
 			
-			copyFile f ff
-			
-			resizeImage ff
-			
-			local bt = Bitmaptexture filename: ff
-			
-			replaceInstances t bt
+			return Bitmaptexture filename: nn
 		),
 		
 		fn addTextureToQueue t = (
 			if (t == undefined) do return false
-			return appendIfUnique texturesQueue t			
+			if (classOf t == Bitmaptexture and t.filename != undefined and t.filename != "") do (
+				local n = toLower (filenameFromPath t.filename)
+				local id = findItem texturesQueueNames n
+				
+				-- To copy
+				-- cnt >= 1, classOf not Bitmaptex
+				if (id == 0) then (
+					append texturesQueue #(t)
+					texturesQueueNames[texturesQueue.count] = n
+					
+					return true
+				) else (
+					return appendIfUnique texturesQueue[id] t
+				)
+			)
+			
+			-- To bake
+			-- To bake map, cnt = 1, classOf not Bitmaptex
+			return append texturesQueue #(t)
 		),	
 		
 		fn addNormalToQueue t = (
@@ -219,18 +283,46 @@
 				return addTextureToQueue t				
 			) 
 			
-			return appendIfUnique normalsQueue t
+			-- To convert
+			if (classOf t == Bitmaptexture and t.filename != undefined and t.filename != "") do (
+				local n = toLower (filenameFromPath t.filename)
+				local id = findItem normalsQueueNames n
+				
+				-- To convert to normal
+				if (id == 0) then (
+					append normalsQueue #(t)
+					normalsQueueNames[normalsQueue.count] = n
+					
+					return true
+				) else (		
+					return appendIfUnique normalsQueue[id] t
+				)
+			)
+			
+			-- To bake map and convert to normal, cnt = 1, classOf not Bitmaptex
+			return appendIfUnique normalsQueue #(t)
 		),
 		
 		fn renderNormalsQueue = (
 			for t in normalsQueue do (
-				convertBumpToNormal t
+				if (classOf t[1] == Bitmaptexture) then (
+					local n = convertBumpToNormal t[1]
+					for i in t do replaceInstances i n
+				) else (
+					local n = convertBumpToNormal t[1]
+					replaceInstances t[1] n
+				)				
 			)
 		),
 		
-		fn renderTexturesQueue = (
+		fn renderTexturesQueue = (			
 			for t in texturesQueue do (
-				renderTargetMap t
+				if (classOf t[1] == Bitmaptexture) then (
+					local b = cacheBitmap t[1]
+					for i in t do replaceInstances i b
+				) else (
+					renderTargetMap t[1] isReplace: true type: #jpg
+				)				
 			)
 		),
 		
@@ -453,6 +545,10 @@
 		fn run = (
 			if (maxFileName == "") do return false
 			
+			ATSOps.Refresh()
+			
+			texturesQueueNames = #()
+			normalsQueueNames = #()
 			texturesQueue = #()
 			normalsQueue = #()
 			
