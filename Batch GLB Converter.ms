@@ -11,6 +11,44 @@
 		normalsQueueNames = #(),
 		texturesQueue = #(),
 		normalsQueue = #(),
+			
+		fn isValidObject o = (
+			return o.material != undefined and isValidNode o and not isDeleted o and canConvertTo o Editable_mesh
+		),
+		
+		fn ungroupRecursive = (
+			local s = objects
+			fn tmpUngroup s = (
+				local o = false
+				for i in s where isGroupHead i and isValidNode i do (
+					explodeGroup i
+					o = true
+				)
+				return o
+			)
+			
+			while k != false do k = tmpUngroup s
+		),
+		
+		fn fixGeometry = (
+			local oo = objects as array
+			with redraw off (
+				with undo off (
+					for o in oo where this.isValidObject o do (
+						ResetXForm o
+						convertToMesh o
+						local a = snapshot o
+						a.name = o.name
+						a.wirecolor = o.wirecolor
+						
+						if (classOf a == Editable_Mesh or classOf a == Editable_Poly) do (
+							update a
+						)
+						try(delete o) catch()
+					)
+				)
+			)
+		),
 		
 		fn instnceDuplicateMaps = (
 			local names = #()
@@ -37,7 +75,7 @@
 			free maps
 		),
 		
-		fn optimizeImages files: #() quality: 90 = (
+		fn optimizeImages files: #() quality: 90 = (			
 			if (files.count == 0) do return false
 			
 			local jpgoptim = "\"" + selfPath + "jpegoptim.exe\""
@@ -59,7 +97,7 @@
 			sysInfo.currentDir = curDir 
 		),
 		
-		fn convertImageToJPG f isDelete: false = (
+		fn convertImageTo f isDelete: true type: #jpg = (
 			local convertexe = selfPath + "convert.exe"
 			local tmpDir = @"C:\temp\"
 			local tmpConvertexe = tmpDir + "convert.exe"
@@ -72,7 +110,12 @@
 			
 			local exe = tmpConvertexe
 			
-			local ff = p + n + ".jpg"
+			local tt = case type of (
+				#png: ".png"
+				default: ".jpg"
+			)
+			
+			local ff = p + n + tt
 			
 			local curDir = sysInfo.currentDir
 			sysInfo.currentDir = selfPath	
@@ -81,9 +124,9 @@
 			hiddenDosCommand cmd exitcode:&exitcode			
 			sysInfo.currentDir = curDir
 			
-			if (isDelete and ext != ".jpg") do deleteFile f
-			
-			optimizeImages files: #(ff)
+			if (isDelete and ext != tt) do deleteFile f
+			-- ??
+			--this.optimizeImages files: #(ff)
 			
 			return ff
 		),
@@ -99,20 +142,18 @@
 			
 			local exe = tmpConvertexe
 			
-			local nn = f
-			if (doesFileExist nn and getFileSize nn > 0) do return nn
-			deleteFile nn
+			if (doesFileExist f and getFileSize f > 0) do return f
 			
 			local curDir = sysInfo.currentDir
 			sysInfo.currentDir = selfPath	
 			
-			local cmd = exe + " \"" + f + "\" -resize \"" + size + "\" \"" + nn + "\""									
+			local cmd = exe + " \"" + f + "\" -resize \"" + size + "\" \"" + f + "\""									
 			hiddenDosCommand cmd exitcode:&exitcode			
 			sysInfo.currentDir = curDir
+			-- ??
+			--this.optimizeImages files: #(f)
 			
-			optimizeImages files: #(nn)
-			
-			return nn	
+			return f	
 		),
 		
 		fn getCacheMapsDir = (
@@ -120,7 +161,7 @@
 		),
 		
 		fn generateCacheFilename type: #jpg = (
-			local p = getCacheMapsDir()
+			local p = this.getCacheMapsDir()
 			local ext = case type of (
 				#png: ".png"
 				default: ".jpg"
@@ -147,16 +188,16 @@
 		
 		fn renderTargetMap t size: [2048, 2048] isReplace: true type: #jpg = (
 			if (t == undefined) do return undefined
-			local p = getCacheMapsDir()
+			local p = this.getCacheMapsDir()
 			makeDir p all: true
-			local f = generateCacheFilename type: type
+			local f = this.generateCacheFilename type: type
 			local rm = renderMap t size: size
 			rm.gamma = 1.0
 			rm.filename = f
 			save rm
 			close rm
-			
-			optimizeImages files: #(f)
+			-- ??
+			--this.optimizeImages files: #(f)
 			
 			local bt = Bitmaptexture filename: f
 			
@@ -165,42 +206,25 @@
 			return bt
 		),
 		
-		/*fn convertBumpToNormal t = (			
-			if (t == undefined) do return false
-			
-			local bt = renderTargetMap t isReplace: false type: #png
-			
-			local f = bt.filename
-			
-			if (f == undefined or f == "") do return false
-			
-			local o = OSLMap()
-			o.OSLPath = selfPath + "BumpToNormalMap.osl"
-			o.Filename = f
-			
-			local n = renderTargetMap o isReplace: false
-			
-			replaceInstances t n
-			deleteFile f
-			
-			return n
-		),*/
-		
 		fn getMapFullPath f = (
 			return mapPaths.getFullFilePath (filenameFromPath f)
 		),
 		
-		fn cacheBitmap t resize: true = (
+		fn cacheBitmap t resize: true type: #jpg = (
 			local f = t.filename
-			if (f == undefined or f == "") do return false
+			if (f == undefined or f == "") do return undefined
 			local ff = generateCacheFilename()
-			f = getMapFullPath f
+			f = this.getMapFullPath f
 			
 			copyFile f ff
 			
-			if (resize) do resizeImage ff
+			ff = this.convertImageTo ff type: type
+			--??
+			--if (resize) do this.resizeImage ff
 			
 			t.filename = ff
+			
+			if (not doesFileExist ff) do return undefined
 			
 			return t
 		),
@@ -218,13 +242,15 @@
 			
 			local bt = undefined
 			if (classOf t == Bitmaptexture) then (
-				bt = cacheBitmap t
+				bt = this.cacheBitmap t type: #png				
 			) else (
-				bt = renderTargetMap t isReplace: false type: #png
+				bt = this.renderTargetMap t isReplace: false type: #png
 			)
 			
+			if (bt == undefined) do return false
+			
 			local f = bt.filename
-			local ff = generateCacheFilename type: #png
+			local ff = this.generateCacheFilename type: #png
 			
 			local p = getFilenamePath f
 			makeDir p all: true
@@ -238,10 +264,10 @@
 			
 			sysInfo.currentDir = curDir 
 			
-			local nn = convertImageToJPG ff
-			deleteFile ff
+			local nn = this.convertImageTo ff type: #jpg
 			
-			optimizeImages files: #(nn)
+			-- ??
+			--this.optimizeImages files: #(nn)
 			
 			deleteFile f
 			
@@ -257,45 +283,47 @@
 			if (t == undefined) do return false
 			if (classOf t == Bitmaptexture and t.filename != undefined and t.filename != "") do (
 				local n = toLower (filenameFromPath t.filename)
-				local id = findItem texturesQueueNames n
+				local id = findItem this.texturesQueueNames n
 				
-				-- To copy
-				-- cnt >= 1, classOf not Bitmaptex
+				-- To copy			
 				if (id == 0) then (
 					append texturesQueue #(t)
-					texturesQueueNames[texturesQueue.count] = n
+					this.texturesQueueNames[this.texturesQueue.count] = n
 					
 					return true
 				) else (
-					return appendIfUnique texturesQueue[id] t
+					return appendIfUnique this.texturesQueue[id] t
 				)
 			)
 			
 			-- To bake
 			-- To bake map, cnt = 1, classOf not Bitmaptex
-			return append texturesQueue #(t)
+			return append this.texturesQueue #(t)
 		),	
 		
 		fn addNormalToQueue t = (
 			if (t == undefined) do return false
 			
 			if (classOf t == CoronaNormal and t.normalMap != undefined) do (
-				return addTextureToQueue t				
+				local b =  t.normalMap
+				-- Kill CoronaNormal
+				replaceInstances t b
+				return this.addTextureToQueue b
 			) 
 			
 			-- To convert
 			if (classOf t == Bitmaptexture and t.filename != undefined and t.filename != "") do (
 				local n = toLower (filenameFromPath t.filename)
-				local id = findItem normalsQueueNames n
+				local id = findItem this.normalsQueueNames n
 				
 				-- To convert to normal
 				if (id == 0) then (
-					append normalsQueue #(t)
-					normalsQueueNames[normalsQueue.count] = n
+					append this.normalsQueue #(t)
+					this.normalsQueueNames[this.normalsQueue.count] = n
 					
 					return true
 				) else (		
-					return appendIfUnique normalsQueue[id] t
+					return appendIfUnique this.normalsQueue[id] t
 				)
 			)
 			
@@ -304,24 +332,24 @@
 		),
 		
 		fn renderNormalsQueue = (
-			for t in normalsQueue do (
-				if (classOf t[1] == Bitmaptexture) then (
-					local n = convertBumpToNormal t[1]
+			for t in this.normalsQueue do (
+				if (classOf t[1] == Bitmaptexture) then (					
+					local n = this.convertBumpToNormal t[1]
 					for i in t do replaceInstances i n
 				) else (
-					local n = convertBumpToNormal t[1]
+					local n = this.convertBumpToNormal t[1]
 					replaceInstances t[1] n
 				)				
 			)
 		),
 		
 		fn renderTexturesQueue = (			
-			for t in texturesQueue do (
+			for t in this.texturesQueue do (
 				if (classOf t[1] == Bitmaptexture) then (
 					local b = cacheBitmap t[1]
 					for i in t do replaceInstances i b
 				) else (
-					renderTargetMap t[1] isReplace: true type: #jpg
+					this.renderTargetMap t[1] isReplace: true type: #jpg
 				)				
 			)
 		),
@@ -335,6 +363,16 @@
 				)
 			)
 			return o
+		),
+		
+		fn neutralizeMeshSmooth = (
+			local a = #()
+			for i in getClassInstances MeshSmooth do appendIfUnique a i
+			for i in getClassInstances TurboSmooth do appendIfUnique a i
+				
+			for i in a do (
+				if (i.renderIterations > i.iterations) do i.iterations = i.renderIterations
+			)
 		),
 		
 		fn neutralizeFalloff = (
@@ -380,7 +418,7 @@
 				nm.emissionMap = i.texmap
 				if (i.opacityTexmap != undefined) do (
 					nm.AlphaMap = i.opacityTexmap
-					addTextureToQueue nm.AlphaMap
+					this.addTextureToQueue nm.AlphaMap
 					nm.alphaMode = 2
 				)
 				
@@ -388,7 +426,7 @@
 			)
 		),
 		
-		fn coronaPhysicalMtlToGltfMaterial falloffMaterials: #() = (
+		fn coronaPhysicalMtlToGltfMaterial falloffMaterials: #() = (			
 			for i in getClassInstances CoronaPhysicalMtl do (
 				local nm = glTFMaterial()
 				nm.name = i.name
@@ -398,7 +436,7 @@
 				-- Diffuse				
 				if (i.baseTexmap != undefined) then (
 					nm.baseColorMap = i.baseTexmap
-					addTextureToQueue nm.baseColorMap
+					this.addTextureToQueue nm.baseColorMap
 					
 					if (i.baseLevel != 1.0) do (
 						local c = i.baseLevel * 255.0
@@ -412,7 +450,7 @@
 				nm.roughness = if (i.roughnessMode == 1) then (1.0 - i.baseRoughness) else (i.baseRoughness)
 				if (i.baseRoughnessTexmap != undefined) then (
 					nm.roughnessMap = i.baseRoughnessTexmap
-					addTextureToQueue nm.roughnessMap
+					this.addTextureToQueue nm.roughnessMap
 					
 					if (nm.roughness == 1) do nm.roughness = 0.75
 				) else if (isUsedFalloff and nm.roughness == 0) do (
@@ -431,19 +469,19 @@
 				nm.normal = i.baseBumpMapAmount
 				if (i.baseBumpTexmap != undefined) do (
 					nm.normalMap = copy i.baseBumpTexmap
-					addNormalToQueue nm.normalMap
+					this.addNormalToQueue nm.normalMap
 				)
 				
 				-- Displace
 				if (i.displacementTexmap != undefined) do (
 					nm.normalMap = copy i.displacementTexmap
-					addNormalToQueue nm.normalMap
+					this.addNormalToQueue nm.normalMap
 					nm.normal = 1.65
 				)
 				
 				-- Metalness
 				nm.metalness_map = i.metalnessTexmap
-				addTextureToQueue nm.metalness_map 
+				this.addTextureToQueue nm.metalness_map 
 				
 				if (i.metalnessMode == 1) do (
 					nm.metalness = 1
@@ -458,20 +496,20 @@
 				if (i.selfIllumLevel != 0) do (
 					nm.emissionColor = i.selfIllumColor
 					nm.emissionMap = i.selfIllumTexmap
-					addTextureToQueue nm.emissionMap
+					this.addTextureToQueue nm.emissionMap
 				)
 				
 				-- Refraction
 				if (i.refractionAmountTexmap != undefined) then (
 					nm.AlphaMap = i.refractionAmountTexmap
-					addTextureToQueue nm.AlphaMap
+					this.addTextureToQueue nm.AlphaMap
 					nm.alphaMode = 3
 				) else if (i.refractionAmount != 0) do (
 					local c = i.refractionAmount * 255.0
 					
 					nm.AlphaMap = ColorMap()
 					nm.AlphaMap.solidcolor = color c c c
-					addTextureToQueue nm.AlphaMap
+					this.addTextureToQueue nm.AlphaMap
 				)
 				
 				-- Clearcoat
@@ -479,7 +517,7 @@
 					nm.enableClearCoat = true
 					nm.clearcoat = i.clearcoatAmount
 					nm.clearcoatMap = i.clearcoatAmountTexmap
-					addTextureToQueue nm.clearcoatMap
+					this.addTextureToQueue nm.clearcoatMap
 					
 					nm.clearcoatNormal = i.clearcoatBumpMapAmount
 					nm.clearcoatNormalMap = copy i.clearcoatBumpTexmap
@@ -487,7 +525,7 @@
 					
 					nm.clearcoatRoughness = i.clearcoatRoughness
 					nm.clearcoatRoughnessMap = i.clearcoatRoughnessTexmap
-					addTextureToQueue nm.clearcoatRoughnessMap
+					this.addTextureToQueue nm.clearcoatRoughnessMap
 				)
 				
 				-- Sheen
@@ -496,15 +534,15 @@
 					nm.sheenColor = i.sheenColor
 					nm.sheenRoughness = i.sheenRoughness
 					nm.sheenColorMap = i.sheenColorTexmap
-					addTextureToQueue nm.sheenColorMap
+					this.addTextureToQueue nm.sheenColorMap
 					
 					nm.sheenRoughnessMap = i.sheenRoughnessTexmap
-					addTextureToQueue nm.sheenRoughnessMap
+					this.addTextureToQueue nm.sheenRoughnessMap
 				) else if (isUsedFalloff) do (
 					-- If falloff in diffuse, force enable Sheen
 					nm.enableSheen = true
-					nm.sheenRoughness = 0.18
-					nm.sheenColor = color 35 35 35
+					nm.sheenRoughness = 0.3
+					nm.sheenColor = color 65 65 65
 					nm.metalness = 0
 				)
 				
@@ -527,14 +565,192 @@
 			::CoronaConverterSuppressGui = false
 		),
 		
+		fn autoUnwrap obj = (
+			select obj
+			modPanel.addModToSelection (Unwrap_UVW ()) ui:on
+			subobjectLevel = 3
+			local uvw =  obj.modifiers[1]
+			uvw.setMapChannel 2
+			uvw.setApplyToWholeObject true
+			ss = #{}
+			for i in 1 to uvw.numberPolygons() do append ss i
+			uvw.selectPolygons ss
+			uvw.flattenMap 50 #([1,0,0], [-1,0,0], [0,1,0], [0,-1,0], [0,0,1], [0,0,-1]) 0.0085 true 2 true true
+			convertToMesh obj     
+		),
+		
+		fn attachObjectsByMaterials = (
+			local mats = #()
+			for i in objects where this.isValidObject i do appendIfUnique mats i.material
+			
+			local objsByMats = #()
+			for i in 1 to mats.count do (
+				objsByMats[i] = for o in objects where this.isValidObject o and o.material == mats[i] collect o
+			)
+			
+			for oo in objsByMats where oo.count > 1 do (
+				convertToPoly oo[1]
+				for i in oo.count to 2 by -1 do (
+					polyop.attach oo[1] oo[i]
+					deleteItem oo i
+				)
+			)
+			
+			return for i in objsByMats collect i[1]
+		),
+		
+		fn getDenoisedImage f = (
+			local p = getFilenamePath f
+			local n = getFilenameFile  f
+			local ext = getFilenameType f
+			local d = p + n + "_denoised" + ext
+			if (not doesFileExist d) do return undefined
+			return d
+		),
+		
+		fn denoiseImage f = (
+			local v = getCurrentMaxVersion()
+			
+			local args = v + ";" + f
+			args = substituteString args "/" @"\"
+			
+			local cmd = "denoise.bat \"" +  args + "\""
+			
+			local curDir = sysInfo.currentDir
+			sysInfo.currentDir = selfPath
+			
+			hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+			
+			sysInfo.currentDir = curDir	
+		),
+		
+		fn bakeAO obj filename size: 1024 passes: 100 aoSize: "5cm" denoise: true = (			
+			try (convertToMesh obj) catch ()
+			max tool zoomextents
+			max views redraw
+			clearSelection()	
+			select obj
+			
+			local originalMaterial = obj.material
+			
+			local p = getFilenamePath filename
+			local n = getFilenameFile filename
+			local ext = getFilenameType filename
+			
+			makeDir p all: true
+			
+			renderers.current = Corona()
+			local r = renderers.current
+			
+			local tmp_PassesLimit = r.progressive_passLimit
+			r.progressive_passLimit = passes
+			r.denoise_filterType = 4
+			r.denoise_blendAmount = 1.0
+			r.shading_onlyElements = true
+			renderSceneDialog.commit()
+			renderSceneDialog.update()
+			
+			local m = CoronaPhysicalMtl()
+			m.baseColor = white
+			m.baseRoughness = 1.0
+			local ao = CoronaAO()
+			ao.maxDistance = units.decodeValue aoSize
+			ao.colorSpread = 0.022
+			ao.Quality = 2
+			ao.normalMode = 0
+			ao.rayDirectionality = 0.03
+			--ao.occlusionFrom = 3
+			m.baseTexmap = ao
+			obj.material = m
+			
+			obj.iNodeBakeProperties.removeAllBakeElements() 
+			local be = Corona_DiffuseColor()
+			be.outputSzX = be.outputSzY = size	
+			be.fileType = "jpg"
+			be.filename = filename
+			be.enabled = true
+			be.filter = true
+			obj.INodeBakeProperties.addBakeElement be
+			obj.INodeBakeProperties.bakeEnabled = true
+			obj.INodeBakeProperties.bakeChannel = 2
+			obj.INodeBakeProperties.nDilations = 2
+			select obj
+			
+			render rendertype:#bakeSelected vfb: true progressBar:true outputSize:[size, size] vfb: false
+			
+			-- ??
+			--this.optimizeImages files: #(filename)
+			
+			if (denoise) do denoiseImage filename
+			
+			obj.material = originalMaterial
+			r.progressive_passLimit = tmp_PassesLimit
+		),
+		
+		fn setAOmap obj f = (
+			if (f == "" or not doesFileExist f) do return false
+			
+			local d = getDenoisedImage f
+			if (d != undefined) do f = d
+			
+			local b = Bitmaptexture()
+			b.filename = f
+			b.coords.mapChannel = 2
+			b.name = "AO"
+			
+			for i in getClassInstances glTFMaterial target: obj.material do (			
+				i.ambientOcclusionMap = b
+			)
+		),
+		
+		fn createAOmap = (
+			max unhide all
+			local oo = objects as array
+			for o in oo where this.isValidObject o do (
+				local n = o.material.name
+				o.material = copy o.material
+				o.material.name = n
+				
+				local f = this.generateCacheFilename()			
+				this.autoUnwrap o					
+				this.bakeAO o f size: 512 passes: 10 aoSize: "5cm" denoise: true
+				this.setAOmap o f				
+			)
+		),
+		
+		fn packGLTF i o = (
+			local args = i + ";" + o
+			args = substituteString args "/" @"\"
+			
+			local cmd = "gltfpack.bat \"" +  args + "\""
+			
+			local curDir = sysInfo.currentDir
+			sysInfo.currentDir = selfPath
+			
+			hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+			
+			
+			sysInfo.currentDir = curDir	
+		),
+		
 		fn exportGLB = (
 			ATSOps.Refresh()
 			select geometry
-			local n = getSceneName() + ".glb"
-			local f = selfPath + n
-			deleteFile f
-			exportFile f #noPrompt selectedOnly: true
-			deleteFile (f + ".log")
+			local n = this.getSceneName() 
+			local glbFolder = this.selfPath + @"GLB\"
+			local p = glbFolder + n + @"\"
+			makeDir p all: true			
+			local i = p + n + ".gltf"
+			local o = glbFolder + n + ".glb" 
+			
+			deleteFile i
+			exportFile i #noPrompt selectedOnly: true
+			deleteFile (i + ".log")
+			
+			packGLTF i o
+			
+			-- Remove ktx2
+			--for i in getFiles (glbFolder + "*.ktx2") do deleteFile i
 		),
 		
 		fn removeExtraObjects = (
@@ -542,43 +758,53 @@
 			try (delete cameras) catch ()
 		),
 		
-		fn run = (
+		fn run AO: true = (
 			if (maxFileName == "") do return false
 			
 			ATSOps.Refresh()
 			
-			texturesQueueNames = #()
-			normalsQueueNames = #()
-			texturesQueue = #()
-			normalsQueue = #()
+			this.texturesQueueNames = #()
+			this.normalsQueueNames = #()
+			this.texturesQueue = #()
+			this.normalsQueue = #()
 			
-			clearCacheMapsDir()
-			removeExtraObjects()
+			-- Normalize Mesh
+			this.ungroupRecursive()
+			this.removeExtraObjects()			
+			this.neutralizeMeshSmooth()
+			this.fixGeometry()
+			this.attachObjectsByMaterials()
+			
+			this.clearCacheMapsDir()
 			
 			-- Convert all to Corona Physical Mtl
-			runCoronaConverter()
+			this.runCoronaConverter()
 			
-			instnceDuplicateMaps()
+			this.instnceDuplicateMaps()
 			
-			local falloffMaterials = getMaterialsWithFalloff()
+			local falloffMaterials = this.getMaterialsWithFalloff()
 			
-			neutralizeFalloff()
-			neutralizeCoronaAO()
-			neutralizeCoronaLayered()
+			this.neutralizeFalloff()
+			this.neutralizeCoronaAO()
+			this.neutralizeCoronaLayered()
 			
 			-- Convert to GLTF Material
-			coronaPhysicalMtlToGltfMaterial falloffMaterials: falloffMaterials
-			coronaLightMtlToGltfMaterial()
+			this.coronaPhysicalMtlToGltfMaterial falloffMaterials: falloffMaterials
+			this.coronaLightMtlToGltfMaterial()
 			
 			-- Render Maps
-			renderTexturesQueue()
-			renderNormalsQueue()
+			this.renderTexturesQueue()
+			this.renderNormalsQueue()
 			
-			exportGLB()
+			if (AO) do this.createAOmap()
 			
-			-- ??? Bake AO
+			this.exportGLB()
 		)
 	)
 	
-	(BatchGLBConverterWrapper()).run()
+	local scn = maxFilePath + maxFileName
+	resetMaxFile #noPrompt 
+	loadMaxFile scn quiet: true
+	(BatchGLBConverterWrapper()).run AO: true
+	messageBox "Done!" beep: false title: "Success!"
 )
