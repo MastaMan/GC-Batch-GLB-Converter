@@ -372,6 +372,7 @@
 				
 			for i in a do (
 				if (i.renderIterations > i.iterations) do i.iterations = i.renderIterations
+				try (i.isolineDisplay = false) catch ()
 			)
 		),
 		
@@ -775,15 +776,18 @@
 			this.fixGeometry()
 			this.attachObjectsByMaterials()
 			
+			-- Purge cache
 			this.clearCacheMapsDir()
 			
 			-- Convert all to Corona Physical Mtl
 			this.runCoronaConverter()
 			
+			-- Bitmap instansing
 			this.instnceDuplicateMaps()
 			
 			local falloffMaterials = this.getMaterialsWithFalloff()
 			
+			-- Simplify maps
 			this.neutralizeFalloff()
 			this.neutralizeCoronaAO()
 			this.neutralizeCoronaLayered()
