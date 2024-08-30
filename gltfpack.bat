@@ -16,7 +16,7 @@ for /f "tokens=1,2,3 delims=;" %%i in (%input%) do (
 	set glb=%%j
 )
 
-gltfpack.exe -cc -tc -tl 2048 -vpn -i "%gltf%" -o "%glb%"
+gltfpack.exe -cc -vtf -vnf -vpf -vc 16 -vn 16 -vp 16 -vt 16 -tc -tl 2048 -i "%gltf%" -o "%glb%"
 
 for %%a in ("%gltf%") do set "folder=%%~dpa"
 if not "%folder%"=="" (

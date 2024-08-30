@@ -13,7 +13,7 @@ set file=
 
 for /f "tokens=1,2,3 delims=;" %%i in (%input%) do (
 	set version=%%i
-	set file=%%j
+	set file="%%j"
 )
 
 set vdenoise="c:\ProgramData\Autodesk\ApplicationPlugins\VRay3dsMax%version%\bin\vdenoise.exe"
