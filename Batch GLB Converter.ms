@@ -10,6 +10,9 @@ CLIENT=Eugen Zharnikov
 [ABOUT]
 Script for bulk conversion models to GLB=
 
+[1.0.0]
+* Initial release =
+
 [SCRIPT]
 */
 
@@ -141,8 +144,8 @@ struct BatchGLBConverterWrapper (
 		sysInfo.currentDir = curDir
 		
 		if (isDelete and ext != tt) do deleteFile f
-		-- ??
-		--this.optimizeImages files: #(ff)
+		
+		this.optimizeImages files: #(ff)
 		
 		return ff
 	),
@@ -166,8 +169,8 @@ struct BatchGLBConverterWrapper (
 		local cmd = exe + " \"" + f + "\" -resize \"" + size + "\" \"" + f + "\""									
 		hiddenDosCommand cmd exitcode:&exitcode			
 		sysInfo.currentDir = curDir
-		-- ??
-		--this.optimizeImages files: #(f)
+		
+		this.optimizeImages files: #(f)
 		
 		return f	
 	),
@@ -215,8 +218,8 @@ struct BatchGLBConverterWrapper (
 		rm.filename = f
 		save rm
 		close rm
-		-- ??
-		--this.optimizeImages files: #(f)
+		
+		this.optimizeImages files: #(f)
 		
 		local bt = Bitmaptexture filename: f
 		
@@ -238,14 +241,19 @@ struct BatchGLBConverterWrapper (
 		copyFile f ff
 		
 		ff = this.convertImageTo ff type: type
-		--??
-		--if (resize) do this.resizeImage ff
+		
+		if (resize) do this.resizeImage ff
 		
 		t.filename = ff
 		
 		if (not doesFileExist ff) do return undefined
 		
 		return t
+	),
+	
+	fn extractBitmapFromSlot m = (
+		local a = getClassInstances Bitmaptexture target: m
+		return a[1]
 	),
 	
 	fn convertBumpToNormal t = (
@@ -261,9 +269,15 @@ struct BatchGLBConverterWrapper (
 		
 		local bt = undefined
 		if (classOf t == Bitmaptexture) then (
-			bt = this.cacheBitmap t type: #png				
+			bt = this.cacheBitmap t type: #png
 		) else (
-			bt = this.renderTargetMap t isReplace: false type: #png
+			-- If possible extract one bitmap for normal
+			local _tmp = this.extractBitmapFromSlot t
+			if (_tmp == undefined) then (
+				bt = this.renderTargetMap t isReplace: false type: #png
+			) else (
+				bt = this.cacheBitmap _tmp type: #png
+			)
 		)
 		
 		if (bt == undefined) do return false
@@ -285,8 +299,8 @@ struct BatchGLBConverterWrapper (
 		
 		local nn = this.convertImageTo ff type: #jpg
 		
-		-- ??
-		--this.optimizeImages files: #(nn)
+		
+		this.optimizeImages files: #(nn)
 		
 		deleteFile f
 		
@@ -295,7 +309,7 @@ struct BatchGLBConverterWrapper (
 			return bt
 		) 
 		
-		return Bitmaptexture filename: nn
+		return Bitmaptexture filename: nn			
 	),
 	
 	fn addTextureToQueue t = (
@@ -446,12 +460,21 @@ struct BatchGLBConverterWrapper (
 		)
 	),
 	
+	fn clampColor c = (
+		if (c == black) do return color 4 4 4
+		if (c == white) do return 251 251 251
+		return c
+	),
+	
 	fn coronaPhysicalMtlToGltfMaterial falloffMaterials: #() = (			
 		for i in getClassInstances CoronaPhysicalMtl do (
 			local nm = glTFMaterial()
 			nm.name = i.name
 			
 			local isUsedFalloff = (findItem falloffMaterials i) != 0
+			local preset = #none
+			
+			if (isUsedFalloff) do preset = #cloth
 			
 			-- Diffuse				
 			if (i.baseTexmap != undefined) then (
@@ -461,9 +484,10 @@ struct BatchGLBConverterWrapper (
 				if (i.baseLevel != 1.0) do (
 					local c = i.baseLevel * 255.0
 					nm.baseColor = color c c c
+					nm.baseColor = this.clampColor nm.baseColor
 				)
 			) else (
-				nm.baseColor = i.basecolor
+				nm.baseColor = this.clampColor i.basecolor
 			)
 			
 			-- Roughness
@@ -477,8 +501,6 @@ struct BatchGLBConverterWrapper (
 				nm.roughness = 0.75
 			)
 			
-			
-			
 			-- Opacity
 			if (i.opacityTexmap != undefined) do (
 				nm.AlphaMap = i.opacityTexmap
@@ -487,6 +509,7 @@ struct BatchGLBConverterWrapper (
 			
 			-- Bump
 			nm.normal = i.baseBumpMapAmount
+			if (nm.normal > 1.0) do nm.normal = 1.0
 			if (i.baseBumpTexmap != undefined) do (
 				nm.normalMap = copy i.baseBumpTexmap
 				this.addNormalToQueue nm.normalMap
@@ -496,7 +519,7 @@ struct BatchGLBConverterWrapper (
 			if (i.displacementTexmap != undefined) do (
 				nm.normalMap = copy i.displacementTexmap
 				this.addNormalToQueue nm.normalMap
-				nm.normal = 1.65
+				nm.normal = 1.0
 			)
 			
 			-- Metalness
@@ -558,14 +581,22 @@ struct BatchGLBConverterWrapper (
 				
 				nm.sheenRoughnessMap = i.sheenRoughnessTexmap
 				this.addTextureToQueue nm.sheenRoughnessMap
-			) else if (isUsedFalloff) do (
-				-- If falloff in diffuse, force enable Sheen
-				nm.enableSheen = true
-				nm.sheenRoughness = 0.3
-				nm.sheenColor = color 65 65 65
-				nm.metalness = 0
 			)
 			
+			-- Force set prams for specific presets
+			if (preset == #cloth) do (
+				nm.normal = 0.25
+				
+				if (i.sheenAmount != 0) do (
+					nm.enableSheen = true
+					nm.sheenRoughness = 0.3
+					nm.sheenColor = color 65 65 65
+					nm.metalness = 0
+				)
+			)
+			
+			
+			-- Replacement
 			replaceInstances i nm				
 		)
 	),
@@ -644,7 +675,7 @@ struct BatchGLBConverterWrapper (
 		sysInfo.currentDir = curDir	
 	),
 	
-	fn bakeAO obj filename ao: undefined = (
+	fn bakeCoronaAO obj filename ao: undefined = (
 		if (ao == undefined) do return false
 		
 		try (convertToMesh obj) catch ()
@@ -700,13 +731,86 @@ struct BatchGLBConverterWrapper (
 		
 		render rendertype:#bakeSelected vfb: true progressBar:true outputSize:[ao.resolution, ao.resolution] vfb: false
 		
-		-- ??
-		--this.optimizeImages files: #(filename)
+		this.optimizeImages files: #(filename)
 		
 		if (ao.denoise) do denoiseImage filename
 		
 		obj.material = originalMaterial
 		r.progressive_passLimit = tmp_PassesLimit
+	),
+	
+	fn getXNormal = (
+		local p = @"c:\Program Files\xNormal\"
+		if (not doesDirectoryExist p) do return undefined
+		local dd = getDirectories (p + "*")
+		local d = dd[dd.count]
+		if (d == undefined) do return undefined
+		
+		local f = d + @"x64\xNormal.exe"
+		if (not doesFileExist f) do return undefined
+		
+		return f
+	),
+	
+	fn xNomralCmd fbx jpg size = (
+		local selfPath = getFileNamePath (getThisScriptFileName())
+			
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = selfPath	
+		
+		local xNormal = this.getXNormal()
+		if (xNormal == undefined) do return false
+		
+		local args = xNormal + ";" + fbx + ";" + jpg + ";" + size
+		local cmd = "xnormal.bat \"" +  args + "\""
+		
+		hiddenDosCommand cmd exitcode:&exitcode	
+		
+		sysInfo.currentDir = curDir
+	),
+	
+	fn bakeXNormalAO obj filename ao: undefined = (
+		if (ao == undefined) do return false
+		
+		local denoise = ao.denoise
+		local res = ao.resolution as string
+		
+		local p = getFilenamePath filename
+		local n = getFilenameFile filename
+		local ext = getFilenameType filename
+		
+		deleteFile filename
+		makeDir p all: true
+		
+		local clone = snapshot obj
+		
+		channelInfo.CopyChannel clone 3 2
+		channelInfo.PasteChannel clone 3 1
+		
+		select clone
+		
+		FbxImporterSetParam "Cameras" false
+		FbxImporterSetParam "Lights" false
+		FbxImporterSetParam "Animation" false
+		FbxExporterSetParam "EmbedTextures" false
+		FbxExporterSetParam "SmoothingGroups" true
+		
+		local nn = "__tmpBakeAO_Mesh_" + (timeStamp() as string) + ".fbx"
+		local f = p + nn
+		
+		exportFile f #noPrompt selectedOnly: true
+		local generatedFile = p + n + "_cavity" + ext
+		deleteFile generatedFile
+		
+		this.xNomralCmd f filename res
+		
+		renameFile generatedFile filename
+		
+		delete clone
+		deleteFile f
+		
+		this.optimizeImages files: #(filename)		
+		if (ao.denoise) do denoiseImage filename
 	),
 	
 	fn setAOmap obj f = (
@@ -735,9 +839,16 @@ struct BatchGLBConverterWrapper (
 			
 			local f = this.generateCacheFilename()
 			
-			this.autoUnwrap o	
-			this.bakeAO o f ao: ao
-			this.setAOmap o f		
+			this.autoUnwrap o
+			if (ao.type == #corona) do (
+				this.bakeCoronaAO o f ao: ao
+				this.setAOmap o f
+			)
+			
+			if (ao.type == #xnormal) do (
+				this.bakeXNormalAO o f ao: ao
+				this.setAOmap o f
+			)			
 		)
 	),
 	
@@ -755,11 +866,11 @@ struct BatchGLBConverterWrapper (
 		sysInfo.currentDir = curDir	
 	),
 	
-	fn exportGLB p = (
+	fn exportGLB p n: undefined = (
 		ATSOps.Refresh()
 		select geometry
 		try (unhide selection doLayer: true) catch ()
-		local n = this.getSceneName() 
+		if (n == undefined) do n = this.getSceneName() 
 		local pp = p + n + @"\"
 		makeDir pp all: true
 		local i = pp + n + ".gltf"
@@ -771,6 +882,7 @@ struct BatchGLBConverterWrapper (
 		
 		packGLTF i o
 		
+		return o
 		-- Remove ktx2
 		--for i in getFiles (glbFolder + "*.ktx2") do deleteFile i
 	),
@@ -836,11 +948,13 @@ struct BatchGLBConverterWrapper (
 		
 		if (ao.enabled) do this.createAOmap ao: ao
 		
-		this.exportGLB out
+		local o = this.exportGLB out
 		
 		if (scn.del != undefined) do rmDir scn.del
 		
 		SetQuietMode false
+		
+		return o
 	),
 	
 	fn extractZip f o = (
@@ -861,7 +975,8 @@ struct BatchGLBConverterWrapper (
     ),
 	
 	fn load f = (
-		resetMaxFile #noprompt
+		sleep 0.1
+		try (resetMaxFile #noprompt) catch ()
 		
 		struct scn (file, path, name, ext, type, del, opened, maxName)
 		local r = scn()
@@ -972,7 +1087,7 @@ try(closeRolloutFloater floaterBatchGLBConverter) catch()
 
 if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 
-	global floaterBatchGLBConverter = newRolloutFloater "GLB Converter" 300 630
+	global floaterBatchGLBConverter = newRolloutFloater "GLB Converter" 300 700
 
 	rollout _rBatchGCGCLBConverter "GLB Converter" category: 1 (
 		group "Batch Export to GLB" (
@@ -987,13 +1102,21 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		)
 		
 		group "AO Settings" (
+			checkbox cbxUseCoronaAO "Use Corona AO"
+			
 			spinner spnAOPasses "Passes: " range: [1, 9999, 100] type: #integer fieldwidth: 50 align: #right across: 2 offset: [-15, 0]
 			spinner spnAOSize "Size (cm): " range: [0.01, 9999.0, 5.0] type: #float fieldwidth: 50 
 			spinner spnAOResolution "Resolution:"  range: [512, 8192, 1024] scale: 512 type: #integer align: #right fieldwidth: 50 across: 2  offset: [-15, 0]
 			checkbox cbxAODenoise "Use VRay Denoiser" offset: [15, 0]
 		)
 		
-		checkbox cbxBakeAO "Bake AO Maps"
+		group "xNormal AO" (
+			checkbox cbxUseXNormalAO "Use xNormal AO"
+			spinner spnAOXNormalResolution "Resolution:"  range: [512, 8192, 1024] scale: 512 type: #integer align: #right fieldwidth: 50 across: 2  offset: [-15, 0]
+			checkbox cbxAODenoiseXNormal "Use VRay Denoiser" align: #left offset: [15, 0]
+		)
+		
+		
 		
 		button btnBatchExport "Batch Export (0)" height: 36 width: 260 offset: [0, 10]
 		
@@ -1009,8 +1132,18 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			local r = '*'.get "spnAOResolution" type: #int
 			spnAOResolution.value = if (r != 0) then r else 1024
 			
+			local r2 = '*'.get "spnAOXNormalResolution" type: #int
+			spnAOXNormalResolution.value = if (r2 != 0) then r2 else 1024
+			
 			cbxAODenoise.checked = '*'.get "cbxAODenoise" type: #bool_false
-			cbxBakeAO.checked = '*'.get "cbxBakeAO" type: #bool_false
+			cbxUseCoronaAO.checked = '*'.get "cbxUseCoronaAO" type: #bool_false
+			cbxUseXNormalAO.checked = '*'.get "cbxUseXNormalAO" type: #bool_true
+			cbxAODenoiseXNormal.checked = '*'.get "cbxAODenoiseXNormal" type: #bool_false
+			
+			if (cbxUseXNormalAO.checked) do (
+				cbxUseCoronaAO.checked = false
+				'*'.add  "cbxUseCoronaAO" false
+			)
 		)
 		
 		fn formatString s v: #() tag: "$" = (
@@ -1079,11 +1212,16 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			lblStatus.caption = formatString "Selected Items: $1 | Total Items: $2" v: #(ss.count, lbxList.items.count)
 			btnBatchExport.caption = formatString "Batch Export ($1)" v: #(ss.count)
 			
-			isAOGroupEnabled = cbxBakeAO.checked
-			spnAOPasses.enabled = isAOGroupEnabled
-			spnAOResolution.enabled = isAOGroupEnabled
-			spnAOSize.enabled = isAOGroupEnabled
-			cbxAODenoise.enabled = isAOGroupEnabled
+			local isUseCoronaAOGroupEnabled = cbxUseCoronaAO.checked
+			spnAOPasses.enabled = isUseCoronaAOGroupEnabled
+			spnAOResolution.enabled = isUseCoronaAOGroupEnabled
+			spnAOSize.enabled = isUseCoronaAOGroupEnabled
+			cbxAODenoise.enabled = isUseCoronaAOGroupEnabled
+			
+			local isUseXNormalAOGroupEnabled = cbxUseXNormalAO.checked
+			spnAOXNormalResolution.enabled = isUseXNormalAOGroupEnabled
+			cbxAODenoiseXNormal.enabled = isUseXNormalAOGroupEnabled
+			
 		)
 	
 		fn updateLbx = (
@@ -1124,16 +1262,32 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			local ss = getSelectedItems()			
 			if (ss.count == 0) do return messageBox "Please select items from list!" title: "Warning!"
 			
+			local xNormal = ::API_BATCH_GLB_CONVERTER.getXNormal()
+			if (cbxUseXNormalAO.checked and xNormal == undefined) do (
+				messageBox "xNormal not installed!" title: "Error!"
+				return false
+			)
+			
 			local p = getOpenPath()
 			if (p == undefined) do return false
 			
-			struct AO_Settings (enabled, passes, resolution, denoise, size)
+			struct AO_Settings (enabled, passes, resolution, denoise, size, type)
 			ao = AO_Settings()
-			ao.enabled = cbxBakeAO.checked
-			ao.size = (spnAOSize.value as string) + "cm"
-			ao.passes = spnAOPasses.value
-			ao.resolution = spnAOResolution.value
-			ao.denoise = cbxAODenoise.checked
+			ao.enabled = cbxUseCoronaAO.checked or cbxUseXNormalAO.checked
+			
+			if (cbxUseCoronaAO.checked) do (
+				ao.size = (spnAOSize.value as string) + "cm"
+				ao.passes = spnAOPasses.value
+				ao.resolution = spnAOResolution.value
+				ao.denoise = cbxAODenoise.checked
+				ao.type = #corona
+			)
+			
+			if (cbxUseXNormalAO.checked) do (
+				ao.resolution = spnAOXNormalResolution.value
+				ao.denoise = cbxAODenoiseXNormal.checked
+				ao.type = #xnormal
+			)
 			
 			progressStart "In process..."
 			escapeEnable = true
@@ -1148,7 +1302,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				local scn = ::API_BATCH_GLB_CONVERTER.load f.filename				
 				if (not scn.opened) do continue
 				
-				::API_BATCH_GLB_CONVERTER.run scn: scn out: p ao: ao
+				local glb = ::API_BATCH_GLB_CONVERTER.run scn: scn out: p ao: ao
+				
+				'*'.add f.filename glb sec:"files"
 				
 				if (getProgressCancel() or keyboard.escPressed) do return false
 				
@@ -1214,9 +1370,23 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		on spnAOPasses changed v do '*'.add  "spnAOPasses" v
 		on spnAOSize changed v do '*'.add  "spnAOSize" v
 		on spnAOResolution changed v do '*'.add  "spnAOResolution" v
-		on cbxAODenoise changed v do '*'.add  "cbxAODenoise" v
-		on cbxBakeAO changed v do (
-			'*'.add  "cbxBakeAO" v
+		on cbxAODenoise changed v do '*'.add  "cbxAODenoise" v		
+		on spnAOXNormalResolution changed v do '*'.add  "spnAOXNormalResolution" v	
+		on cbxAODenoiseXNormal changed v do '*'.add  "cbxAODenoiseXNormal" v		
+		
+		on cbxUseCoronaAO changed v do (			
+			'*'.add  "cbxUseXNormalAO" false
+			cbxUseXNormalAO.checked = false
+			
+			'*'.add  "cbxUseCoronaAO" v
+			updateUI()
+		)
+		
+		on cbxUseXNormalAO changed v do (
+			'*'.add  "cbxUseXNormalAO" v			
+			'*'.add  "cbxUseCoronaAO" false
+			cbxUseCoronaAO.checked = false
+			
 			updateUI()
 		)
 	
@@ -1276,7 +1446,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				"denoise.bat",
 				"gltfpack.bat",
 				"vdenoise.xml",
-				"normalmap.exe"						
+				"normalmap.exe",
+				"xnormal.bat",
+				"xnormal.xml"
 			)
 			
 			local this = getThisScriptFileName()
