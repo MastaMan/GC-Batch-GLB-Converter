@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.0.0
+VERSION=1.0.1
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -12,6 +12,21 @@ Script for bulk conversion models to GLB=
 
 [1.0.0]
 * Initial release =
+
+[1.0.1]
+* Changed: Improved update system=
+
+[FILES]
+Install.mcr=
+jpegoptim.exe=
+convert.exe=
+gltfpack.exe=
+denoise.bat=
+gltfpack.bat=
+vdenoise.xml=
+normalmap.exe=
+xnormal.bat=
+xnormal.xml=
 
 [SCRIPT]
 */
@@ -1022,7 +1037,7 @@ struct BatchGLBConverterWrapper (
 		nn = filenameFromPath m
 		r.maxName = nn
 		
-		loadMaxFile m quiet: true		
+		loadMaxFile m quiet: true
 		SetQuietMode false	
 		r.opened = maxFileName == nn
 		
@@ -1081,24 +1096,260 @@ struct '@' (
 )
 
 global '*' = '@'()	
-
+global _rBatchGCGLBConverter = undefined
+if (::_rBatchGCGLBChecker == undefined) do (
+	global _rBatchGCGLBChecker = undefined
+)
 
 try(closeRolloutFloater floaterBatchGLBConverter) catch()
+try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
 
 if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 
-	global floaterBatchGLBConverter = newRolloutFloater "GLB Converter" 300 700
+	global floaterBatchGLBConverter = newRolloutFloater "GLB Converter" 300 800
 
-	rollout _rBatchGCGCLBConverter "GLB Converter" category: 1 (
-		group "Batch Export to GLB" (
-			label lblTip1 "Tip: You can add *.max or *.zip to the list!" align: #left
-			multiListbox lbxList "" items: #() height: 25
-			label lblStatus "Selected items for export: 0" align: #right
+	fn checkArchiveForErrors = (
+		try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
+		if (::BATCH_GLB_CONVERTER_FILES == undefined) do return false
+		if (::floaterBatchGLBConverter == undefined) do return false
+		
+		rollout _rBatchGCGLBChecker "" (
+			group "Info" ( 
+				label lblName "Loading..." align: #left
+				label lblIsChecked "" align: #left
+			)
 			
-			button btnAdd "+ Add"  width: 100 across: 2
-			button btnRemove "- Remove" width: 100	
-			button btnRemoveAll "Remove All" width: 100 across: 2
-			button btnCopyNames "Copy Names"  width: 100
+			group "Please Check Next Issues" (
+				checkbox cbxOneModelInScene "One model in the scene" align: #left enabled: false
+				checkbox cbxLogicalAttached "Model logically attached (Explode groups first!)" align: #left enabled: false
+				checkbox cbxCentered "Model centered" align: #left enabled: false
+				checkbox cbxCorrectPivot "Model has proper Pivot" align: #left enabled: false
+				checkbox cbxMeshSmooth "Model MeshSmoothed" align: #left enabled: false
+				checkbox cbxNoModifiers "Model without modifiers" align: #left enabled: false
+				checkbox cbxAsEditableMesh "Model as Editable Mesh" align: #left enabled: false
+				checkbox cbxNoRealWorldMapping "No RealWorld Tiling (Correct Mapping!)" align: #left enabled: false
+			)
+			
+			button btnSave "Save Scene" width: 254 height: 35 enabled: false
+			button btnPrev "<< Prev." across: 2 width: 120 align: #left offset: [0, 10] enabled: false
+			button btnNext "Next >>"  width: 120 align: #right offset: [0, 10] enabled: false
+			
+			group "Danger Zone" (
+				button btnRemoveExistingFolder "Remove Existing Folder (With Scene)" width: 254 enabled: false
+				checkbox cbxAgreeRemoveExistingFolder "I agree to remove existing folder" align: #left
+			)
+			
+			local modelChecks = #(
+				cbxOneModelInScene,
+				cbxLogicalAttached,
+				cbxCentered,
+				cbxCorrectPivot,
+				cbxMeshSmooth,
+				cbxNoModifiers,
+				cbxAsEditableMesh,
+				cbxNoRealWorldMapping
+			)
+			
+			local current = undefined
+			
+			fn formatString s v: #() tag: "$" = (
+				for i in 1 to v.count  do (
+					local t = v[i] as string
+					s = substituteString s (tag + i as string) (t)
+				)
+				
+				return s
+			)
+			
+			fn boost = if (((maxVersion())[1] / 1000) >= 13) do windows.processPostedMessages() 
+			
+			fn getter k = (
+				if (current == undefined or current.ini == undefined) do return ""
+				return getINISetting current.ini "index" k
+			)
+			
+			fn setter k v = (
+				if (current == undefined or current.ini == undefined) do return false
+				setINISetting current.ini "index" k (v as string)
+			)
+			
+			fn loadChecks = (
+				for c in modelChecks do (
+					c.checked = (getter c.name) == "true"
+					c.enabled = true
+				)
+			)
+			
+			fn saveChecks = (
+				for c in modelChecks do (
+					setter (c.name) c.checked					
+				)
+			)
+			
+			fn updateUI = (
+				if (current == undefined) do return false				
+				local n = current.name				
+				local isChecked = (getter "checked") == "true"
+				local isCheckedText = if (isChecked) then "Yes" else "No"
+				
+				lblName.caption = formatString "Name: $1" v: #(n)
+				lblIsChecked.caption = formatString "Is Checked: $1" v: #(isCheckedText)
+				
+				boost()
+			)
+			
+			fn setPos = (
+				if (::_rBatchGCGLBChecker == undefined) do return false
+				local p = floaterBatchGLBConverter.pos				
+				SetDialogPos ::_rBatchGCGLBChecker [p[1] + 310, p[2]]
+			)
+			
+			fn goToFile type = (
+				if (getSaveRequired()) do (
+					local q = queryBox ("Do you want to go to the " + (type as string) + " file without saving?") title: "Confirm?"
+					if (not q) do return false
+				)
+				
+				local lbx = _rBatchGCGLBConverter.lbxList
+				local ss = lbx.selection as array
+				local id = ss[1]
+				
+				if (id == 0 or id == undefined) do try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
+				
+				local f = ::BATCH_GLB_CONVERTER_FILES				
+				local prevId = id - 1
+				local nextId = id + 1
+				local prev = try (f[prevId]) catch (undefined)
+				local next = try (f[nextId]) catch (undefined)
+				local sid = -1
+				
+				if (type == #next and next == undefined) do return false
+				if (type == #pref and prev == undefined) do return false
+				
+				if (type == #next) do sid = nextId 
+				if (type == #prev) do sid = prevId 
+				if (sid == -1) do return false
+				
+				lbx.selection = sid
+				
+				checkArchiveForErrors()
+			)
+			
+			on _rBatchGCGLBChecker open do (
+				setPos()
+				
+				local f = ::BATCH_GLB_CONVERTER_FILES
+				local lbx = _rBatchGCGLBConverter.lbxList
+				local ss = lbx.selection as array
+				local id = ss[1]
+				
+				if (id == 0 or id == undefined) do try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
+				
+				current = f[id]
+				local prev = try (f[id - 1]) catch (undefined)
+				local next = try (f[id + 1]) catch (undefined)
+				
+				btnNext.enabled = next != undefined
+				btnPrev.enabled = prev != undefined
+				
+				local scn = getter "scene"
+				local isErrorOpen = false
+				
+				if (scn == "") then (
+					local r = ::API_BATCH_GLB_CONVERTER.load current.filename
+					
+					if (r.opened) do (
+						setter "scene" r.maxName
+					)
+					
+					isErrorOpen = not r.opened
+				) else (					
+					try (resetMaxFile #noprompt) catch ()
+					loadMaxFile (current.extractPath + scn) quiet: true
+					if (maxFileName == "") do isErrorOpen = true
+				)
+				
+				if (isErrorOpen) do messageBox "Error while opening scene!\nTry to clear extracted files and repeat againg!" title: "Error!"
+				
+				updateUI()
+				
+				loadChecks()
+				
+				btnSave.enabled = true
+			)
+			
+			on _rBatchGCGLBChecker moved p do (
+				setPos()
+			)
+			
+			on cbxAgreeRemoveExistingFolder changed v do (
+				btnRemoveExistingFolder.enabled = v
+			)
+			
+			on btnRemoveExistingFolder pressed do (
+				if (current == undefined) do (
+					return btnRemoveExistingFolder.enabled = false
+				)
+				
+				local q = queryBox "Are you sure want to delete Existing folder with model?" title: "Confirm?"
+				if (not q) do return false
+				
+				try (resetMaxFile #noprompt) catch ()
+				
+				local cmd = "rmdir /s /q \"" +  current.extractPath  + "\""
+				
+				HiddenDOSCommand cmd
+				
+				try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
+			)
+			
+			on btnNext pressed do (
+				goToFile #next
+			)
+			
+			on btnPrev pressed do (
+				goToFile #prev
+			)
+			
+			on btnSave pressed do (
+				if (maxFileName == "") do (
+					return btnSave.enabled = false
+				)
+				
+				local lbx = _rBatchGCGLBConverter.lbxList
+				local ss = lbx.selection as array
+				local id = ss[1]
+				
+				if (id == 0 or id == undefined) do try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
+				
+				saveChecks()
+				saveMaxFile (maxFilePath + maxFileName)
+				setter "checked" "true"
+				
+				updateUI()
+				try (::_rBatchGCGLBConverter.updateLbx()) catch ()
+				
+				lbx.selection = id			
+			)
+		)
+		
+		CreateDialog _rBatchGCGLBChecker 280 400
+	)
+
+	rollout _rBatchGCGLBConverter "GLB Converter" category: 1 (
+		group "Sync Amazon Folder" (
+			edittext edtInputPath "" readonly: true across: 2 align: #left fieldwidth: 215 height: 22		
+			button btnSearchInputPath "..." width: 35 height: 24  align: #right offset: [0, -1]		
+		)
+		group "Files List (*.zip)" (
+			multilistbox lbxList "" items: #() height: 25
+			label lblStatus "Selected items for export: 0" align: #right
+			button btnSelectAll "Select All" align: #center width: 100 across: 2
+			button btnDeselect "Deselect" align: #center width: 100
+		)
+		
+		group "Check for Correctness" (
+			button btnCheckArchive "Check Archive" width: 260 height: 36
 		)
 		
 		group "AO Settings" (
@@ -1116,13 +1367,14 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			checkbox cbxAODenoiseXNormal "Use VRay Denoiser" align: #left offset: [15, 0]
 		)
 		
-		
-		
 		button btnBatchExport "Batch Export (0)" height: 36 width: 260 offset: [0, 10]
 		
 		global BATCH_GLB_CONVERTER_FILES = #()
 		
 		fn loadSettings = (
+			local dd = '*'.get "tnt_path"
+			edtInputPath.text = dd
+			
 			local p = '*'.get "spnAOPasses" type: #int
 			spnAOPasses.value = if (p != 0) then p else 100
 			
@@ -1181,26 +1433,29 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		
 		fn getData = (
 			::BATCH_GLB_CONVERTER_FILES = #()
+			local dd = '*'.get "tnt_path"
 			
-			local ff = '*'.get "" sec: "files"
+			local ff = getFiles (dd + "*.zip")
 			
-			struct tmp (path, filename, name, glb, isGlbExist, type, ext)
+			struct tmp (path, filename, name, glb, isGlbExist, type, ext, ini, extractPath, isChecked)
 			
 			for f in ff do (
-				local glb = '*'.get f sec: "files"
-				local isGlbExist = glb != "" and doesFileExist glb				
 				local p = getFilenamePath f
 				local n = getFilenameFile f
 				local ext = getFilenameType f
+				local extractPath = p + n + @"\"
+				
+				local glb = p + n + "-GLB.glb"										
+				local ini = extractPath + "glb.ini"
+				
 				local type = (trimLeft ext ".") as name
 				local filename = f
 				
-				if (not doesFileExist f) do (
-					'*'.del f sec: "files"
-					continue
-				)
 				
-				append ::BATCH_GLB_CONVERTER_FILES (tmp path: p name: n filename: filename glb: glb isGlbExist: isGlbExist type: type ext: ext)
+				local isChecked = (getINISetting ini "index" "checked") == "true"
+				local isGlbExist = doesFileExist glb
+				
+				append ::BATCH_GLB_CONVERTER_FILES (tmp path: p name: n filename: filename glb: glb isGlbExist: isGlbExist type: type ext: ext ini: ini extractPath: extractPath isChecked: isChecked)
 			)
 			
 			return ::BATCH_GLB_CONVERTER_FILES
@@ -1208,9 +1463,20 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 
 		fn updateUI = (
 			local ss = getSelectedItems()
-			btnBatchExport.enabled = lbxList.items.count != 0 and ss.count != 0
-			lblStatus.caption = formatString "Selected Items: $1 | Total Items: $2" v: #(ss.count, lbxList.items.count)
-			btnBatchExport.caption = formatString "Batch Export ($1)" v: #(ss.count)
+			
+			local checkedCnt = 0
+			local checkedInSel = 0
+			for i in ::BATCH_GLB_CONVERTER_FILES do (
+				if (i.isChecked) do (
+					checkedCnt += 1
+					if (findItem ss i != 0) do checkedInSel += 1
+				)
+			)
+			
+			btnBatchExport.enabled = lbxList.items.count != 0 and checkedCnt != 0
+			lblStatus.caption = formatString "Ready to Export: $1 | Total Items: $2" v: #(checkedCnt, lbxList.items.count)
+			btnBatchExport.caption = formatString "Batch Export ($1/$2)" v: #(checkedInSel, ss.count)
+			btnCheckArchive.enabled = lbxList.items.count != 0 and ss.count == 1
 			
 			local isUseCoronaAOGroupEnabled = cbxUseCoronaAO.checked
 			spnAOPasses.enabled = isUseCoronaAOGroupEnabled
@@ -1220,8 +1486,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			local isUseXNormalAOGroupEnabled = cbxUseXNormalAO.checked
 			spnAOXNormalResolution.enabled = isUseXNormalAOGroupEnabled
-			cbxAODenoiseXNormal.enabled = isUseXNormalAOGroupEnabled
-			
+			cbxAODenoiseXNormal.enabled = isUseXNormalAOGroupEnabled			
 		)
 	
 		fn updateLbx = (
@@ -1231,8 +1496,13 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			local o = #()
 			for i in ::BATCH_GLB_CONVERTER_FILES do (
 				local glbStatus = ""
+				local checkStatus = ""
 				if (i.isGlbExist) do glbStatus = "[GLB]"
-				append o (formatString "$1 $2" v: #(i.name, glbStatus))
+				
+				i.isChecked = (getINISetting i.ini "index" "checked") == "true"
+				
+				if (i.isChecked) do checkStatus = "[Checked]"
+				append o (formatString "$1 $2 $3" v: #(i.name, checkStatus, glbStatus))
 			)
 			
 			lbxList.items = o
@@ -1304,8 +1574,6 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				local glb = ::API_BATCH_GLB_CONVERTER.run scn: scn out: p ao: ao
 				
-				'*'.add f.filename glb sec:"files"
-				
 				if (getProgressCancel() or keyboard.escPressed) do return false
 				
 				progressUpdate (100 * i / ss.count)
@@ -1320,6 +1588,27 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			ShellLaunch p ""
 		)
 		
+		on lbxList doubleClicked v do (
+			checkArchiveForErrors()
+		)
+		
+		on btnCheckArchive pressed do (
+			checkArchiveForErrors()
+		)
+		
+		on btnDeselect pressed do (
+			lbxList.selection = #{}
+			
+			updateUI()
+		)
+		
+		on btnSelectAll pressed do (
+			lbxList.selection = for i in 1 to lbxList.items.count collect i
+			
+			updateUI()
+		)
+		
+		-- !! Del
 		on btnAdd pressed do (
 			local ff = getOpenFiles()
 			if (ff.count == 0) do return #nofiles
@@ -1331,6 +1620,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			updateLbx()
 		)
 		
+		-- !! Del
 		on btnRemove pressed do (
 			local ss = getSelectedItems()
 			if (ss.count == 0) do return messageBox "Please select items from list!" title: "Warning!"
@@ -1344,6 +1634,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			updateLbx()
 		)
 		
+		-- !! Del
 		on btnRemoveAll pressed do (
 			local q = queryBox "Do you really want to delete all items from list?" title: "Confirm?"
 			if (not q) do return #cancel
@@ -1353,16 +1644,20 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			updateLbx()
 		)
 		
-		on btnCopyNames pressed do (
-			local ss = getSelectedItems()
-			if (ss.count == 0) do (
-				messageBox "Please select items from list!" title: "Error!"
-				return false 
-			)
+		on btnSearchInputPath pressed do (
+			local d = '*'.get "tnt_path"
+			local p = getSavePath initialDir: d
 			
-			local b = for i in ss collect i.name
+			if (p == undefined) do return false
+			p += @"\"
 			
-			copyToClipboard b
+			edtInputPath.text = p
+			'*'.add "tnt_path" p
+			
+			loadSettings()
+			
+			lbxList.selection = #{}
+			updateLbx()
 		)
 	
 		on lbxList selectionEnd do updateUI()
@@ -1391,10 +1686,22 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		)
 	
 		
-		on _rBatchGCGCLBConverter open do (
+		on _rBatchGCGLBConverter open do (
 			loadSettings()
 			
 			updateLbx()
+			
+			try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
+		)
+		
+		on _rBatchGCGLBConverter close do (
+			try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
+		)
+	
+		on _rBatchGCGLBConverter moved  p do (
+			if (::_rBatchGCGLBChecker != undefined) do (
+				SetDialogPos ::_rBatchGCGLBChecker [p[1] + 310, p[2]]			
+			)
 		)
 		
 		on btnBatchExport pressed do startBatchExport()
@@ -1438,19 +1745,6 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			local url = "https://raw.githubusercontent.com/MastaMan/GC-Batch-GLB-Converter/main/"
 			local main = url + "Batch GLB Converter.ms"
 			
-			local additionalFiles = #(
-				"Install.mcr", 
-				"jpegoptim.exe",
-				"convert.exe",
-				"gltfpack.exe",
-				"denoise.bat",
-				"gltfpack.bat",
-				"vdenoise.xml",
-				"normalmap.exe",
-				"xnormal.bat",
-				"xnormal.xml"
-			)
-			
 			local this = getThisScriptFileName()
 			local p = getFileNamePath (getThisScriptFileName())
 			local dl = this + ".tmp"
@@ -1458,13 +1752,16 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			if(not r or not doesFileExist dl) do return print "Can't download updates!"
 			local vn = getIniSetting dl "INFO" "VERSION"
 			local vo = getIniSetting this "INFO" "VERSION"
+			local additionalFiles = getIniSetting dl "FILES"
 			
 			if(vn > vo) do (
 				deleteFile this
 				renameFile dl this
 				
 				for n in additionalFiles do (
-					downloadFile (url + n) (p + n)
+					local s = getIniSetting dl "FILES" n
+					if (s == "") do downloadFile (url + n) (p + n)
+					if (s == "deleted") do deleteFile (p + n)
 				)
 				
 				tmrRestart.active = true
@@ -1557,6 +1854,6 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		)	
 	)
 
-	addRollout _rBatchGCGCLBConverter floaterBatchGLBConverter rolledUp: false border: false
+	addRollout _rBatchGCGLBConverter floaterBatchGLBConverter rolledUp: false border: false
 	addRollout _rAboutGCGLBConverter floaterBatchGLBConverter rolledUp: true
 )
