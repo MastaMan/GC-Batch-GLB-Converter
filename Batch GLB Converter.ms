@@ -963,7 +963,7 @@ struct BatchGLBConverterWrapper (
 		
 		if (ao.enabled) do this.createAOmap ao: ao
 		
-		local o = this.exportGLB out
+		local o = this.exportGLB out n: scn.name
 		
 		if (scn.del != undefined) do rmDir scn.del
 		
@@ -1431,13 +1431,28 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			return f
 		)
 		
+		fn getScene ini = (
+			local extractPath = getFilenamePath ini
+			local scn = getINISetting ini "index" "scene"
+			
+			if (scn == "") do return undefined
+			scn = extractPath + scn
+			if (not doesFileExist scn) do return undefined
+			
+			return scn
+		)
+		
+		fn getChecked ini = (
+			return (getINISetting ini "index" "checked") == "true"
+		)
+		
 		fn getData = (
 			::BATCH_GLB_CONVERTER_FILES = #()
 			local dd = '*'.get "tnt_path"
 			
 			local ff = getFiles (dd + "*.zip")
 			
-			struct tmp (path, filename, name, glb, isGlbExist, type, ext, ini, extractPath, isChecked)
+			struct tmp (path, filename, name, glb, isGlbExist, type, ext, ini, extractPath, isChecked, scene)
 			
 			for f in ff do (
 				local p = getFilenamePath f
@@ -1452,10 +1467,12 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				local filename = f
 				
 				
-				local isChecked = (getINISetting ini "index" "checked") == "true"
+				local isChecked = getChecked ini				
 				local isGlbExist = doesFileExist glb
 				
-				append ::BATCH_GLB_CONVERTER_FILES (tmp path: p name: n filename: filename glb: glb isGlbExist: isGlbExist type: type ext: ext ini: ini extractPath: extractPath isChecked: isChecked)
+				local scn = getScene ini
+				
+				append ::BATCH_GLB_CONVERTER_FILES (tmp path: p name: n filename: filename glb: glb isGlbExist: isGlbExist type: type ext: ext ini: ini extractPath: extractPath isChecked: isChecked scene: scn)
 			)
 			
 			return ::BATCH_GLB_CONVERTER_FILES
@@ -1499,7 +1516,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				local checkStatus = ""
 				if (i.isGlbExist) do glbStatus = "[GLB]"
 				
-				i.isChecked = (getINISetting i.ini "index" "checked") == "true"
+				i.isChecked = getChecked i.ini
+				i.scene = getScene i.ini
 				
 				if (i.isChecked) do checkStatus = "[Checked]"
 				append o (formatString "$1 $2 $3" v: #(i.name, checkStatus, glbStatus))
@@ -1529,7 +1547,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		)
 		
 		fn startBatchExport = (
-			local ss = getSelectedItems()			
+			local ss = getSelectedItems()
+			ss = for i in ss where i.isChecked collect i
+			
 			if (ss.count == 0) do return messageBox "Please select items from list!" title: "Warning!"
 			
 			local xNormal = ::API_BATCH_GLB_CONVERTER.getXNormal()
@@ -1538,8 +1558,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				return false
 			)
 			
-			local p = getOpenPath()
-			if (p == undefined) do return false
+			local p = edtInputPath.text
+			if (p == "") do return messageBox "Please select Sync Amazon Folder!" title: "Warning!"
 			
 			struct AO_Settings (enabled, passes, resolution, denoise, size, type)
 			ao = AO_Settings()
@@ -1559,13 +1579,45 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				ao.type = #xnormal
 			)
 			
+			SetQuietMode true
 			progressStart "In process..."
 			escapeEnable = true
 			clearListener()
+			
 			for i in 1 to ss.count do (
 				local f = ss[i]
 				
-				if (not doesFileExist f.filename) do continue
+				if (not doesFileExist f.scene) do continue
+				
+				if (getProgressCancel() or keyboard.escPressed) do return false
+				
+				try (resetMaxFile #noprompt) catch ()
+				loadMaxFile (f.scene) quiet: true
+				if (maxFileName == "") do continue
+				
+				struct scn (file, path, name, ext, type, del, opened, maxName)
+				local r = scn()
+				
+				local ext = getFilenameType f.scene
+				local pp = getFilenamePath f.scene
+				local n = getFilenameFile f.scene
+				local nn = filenameFromPath f.scene
+				
+				r.file = f.scene
+				r.path = pp
+				r.name = getFilenameFile f.glb
+				r.ext = ext
+				r.del = undefined
+				r.opened = true
+				
+				local glb = ::API_BATCH_GLB_CONVERTER.run scn: r out: p ao: ao
+				
+				if (getProgressCancel() or keyboard.escPressed) do return false
+				
+				progressUpdate (100 * i / ss.count)
+				
+				/* Process archives */
+				/*if (not doesFileExist f.filename) do continue
 				
 				if (getProgressCancel() or keyboard.escPressed) do return false
 				
@@ -1576,7 +1628,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				if (getProgressCancel() or keyboard.escPressed) do return false
 				
-				progressUpdate (100 * i / ss.count)
+				progressUpdate (100 * i / ss.count)*/
 			)
 			
 			progressEnd()			
