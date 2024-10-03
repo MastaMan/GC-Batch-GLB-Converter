@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.0.1
+VERSION=1.0.2
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -16,6 +16,10 @@ Script for bulk conversion models to GLB=
 [1.0.1]
 * Changed: Improved update system=
 
+[1.0.2]
++ Added: JSON info=
++ Added: WebPreview with screenshots=
+
 [FILES]
 Install.mcr=
 jpegoptim.exe=
@@ -27,6 +31,8 @@ vdenoise.xml=
 normalmap.exe=
 xnormal.bat=
 xnormal.xml=
+lowes-viewer.zip=
+chrome.bat=
 
 [SCRIPT]
 */
@@ -37,6 +43,222 @@ xnormal.xml=
 
 */
 
+struct WebGLPlayerWrapper (
+	currentPath = getFilenamePath (getThisScriptFilename()),
+	zippedPlayer = currentPath + "lowes-viewer.zip",
+	playerPath = currentPath + @"lowes-viewer\",
+	webserver = playerPath + "webserver.bat",
+	localhost = "",
+		
+	fn extractZip f o = (
+        if (f == undefined or not doesFileExist f) do return false
+        if (getFilenameType f != ".zip") do return false
+		
+		local args = f + ";" + o
+		args = substituteString args "/" @"\"
+		
+		local cmd = "start /b /min extract.bat \"" +  args + "\""
+		
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath
+		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: true
+		
+		sysInfo.currentDir = curDir
+    ),
+
+	fn makeBrowserScreenshot s = (		
+		curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath	
+		
+		local args = localhost + ";" + s
+		local cmd2 = "chrome.bat \"" +  args + "\""
+		hiddenDosCommand cmd2 exitcode:&exitcode	
+		
+		sysInfo.currentDir = curDir
+	),
+	
+	fn startWebServer f = (
+		if (doesFileExist zippedPlayer and not doesFileExist webserver) do (
+			extractZip	zippedPlayer playerPath
+		)
+		
+		local port = "33333"
+		local ne = filenameFromPath f
+		local n = getFilenameFile f
+		local destGLB = playerPath + ne 
+		localhost = "http://localhost:" + port + "/?model=" + n
+		
+		if (not doesFileExist webserver) do return  messageBox "Can't find Lowes Player or Webserver, please reinstall script!" title: "Warining!"
+		
+		for i in (getFiles (playerPath + "*.glb")) do deleteFile i
+		
+		deleteFile destGLB
+		copyFile f destGLB
+		
+		curDir = sysInfo.currentDir
+		sysInfo.currentDir = playerPath	
+		
+		local args = playerPath + ";" + port
+		local cmd = "start /b /min " + (filenameFromPath webserver) + " \"" +  args + "\""
+		
+		hiddenDosCommand cmd exitcode:&exitcode	
+	),
+	
+	fn run f s = (
+		startWebServer f
+		makeBrowserScreenshot s
+	)
+)
+
+struct dateTime (
+    n = (dotNetClass "System.DateTime").Now,
+    y = n.year as string,
+    d = n.day as string,
+    m = n.month as string,
+    hh = n.hour as string,
+    mm = n.minute as string,
+    ss = n.second as string,
+	fn addZero p = (
+		if (p.count == 1) do p = "0" + p
+		return p
+	),
+	fn getDate = (
+		return d + "." + m + "." + y
+	),
+	fn getTime = (
+		return hh + ":" + mm + ":" + ss
+	),
+	fn getCurrent = (		
+		return getDate() + " " + getTime()
+	),
+	fn getAsFileName = (
+		return d + m + y + hh + mm + ss
+	),
+	on create do (
+		d = addZero d
+		m = addZero m
+		hh = addZero hh
+		mm = addZero mm
+		ss = addZero ss
+	)
+)
+
+struct JsonWrapper (
+	/*
+		Example:
+		
+		data = #(
+			#("polygons", "10000"),
+			#("vertex", "10000"),
+			#("name", "Test"),
+			#("render", "Corona"),
+			#("renderVer", "12"),
+			#("arrayValues", #(
+				"val1",
+				"val2"
+			)),
+			#("arrayOfJsons", #(
+				#(
+					#("var1", "value"),
+					#("var2", "value2")
+				),
+				#(
+					#("var3", "value3"),
+					#("var4", "valuet")
+				)
+			)),
+			#("xform", "yes")
+		)
+	*/
+	
+	fn getScriptVersion = (
+		local s = getThisScriptFilename()
+		return getINISetting s "INFO" "VERSION"
+	),
+	
+	fn getScriptName = (
+		local s = getThisScriptFilename()
+		return getINISetting s "INFO" "NAME"
+	),
+	
+	fn addData data k v = (
+		k = k as string
+		v = case classOf v of (
+			undefined: ""
+			UndefinedClass: ""
+			default: v as string
+		)
+		
+		for i in 1 to data.count where data[i][1] == k do (
+			data[i][2] = v
+			return false
+		)
+		
+		append data #(k, v)
+	),
+	
+	fn writeFileUTF8 o b = (
+		local s = dotNetObject "System.IO.StreamWriter" (o) true ((dotNetClass "System.Text.Encoding").GetEncoding("UTF-8"))
+		
+		for l in b where l.count > 0 do s.WriteLine(dotNetObject "System.String" l)			
+		s.Close()		
+	),
+	
+	fn writeJson fname data = (	
+		deleteFile fname
+		
+		-- Force add some data in the end
+		addData data "date" ((dateTime()).getCurrent())
+		addData data "scriptVersion" (getScriptVersion())
+		addData data "scriptName" (getScriptName())
+		
+		local t = "\t"
+		local n = "\n"
+		local q = "\""
+		
+		local j = "{" + n
+		for i in 1 to data.count do (
+			local p = data[i]
+			local comma = if (i != data.count) then ("," + n) else n
+			j += t + q + p[1] + q + ": "
+			
+			local qq = q
+			if (p[2] == "true" or p[2] == "false") do qq = ""
+			
+			case classOf p[2] of (
+				String:  j += qq + p[2] + qq + comma
+				Array: (					
+					j += "[" + n
+					for ii in 1 to p[2].count do (
+						local z = p[2][ii]
+						local comma2 = if (ii != p[2].count) then ("," + n) else n
+						
+						if (classOf z == Array) then (							
+							j += t + t + "{" + n							
+								for iii in 1 to z.count do (
+									local pp = z[iii]
+									local comma3 = if (iii != z.count) then ("," + n) else n
+									
+									j += t + t + t + q + pp[1] + q + ": \"" + pp[2] + q + comma3
+								)
+							j += t + t + "}" + comma2
+						) else (
+							j += t + t + q + z + q + comma2
+						)
+					)
+					j += t + "]" + comma
+				)
+			)			
+		)
+		
+		j += "}"
+		
+		local b = FilterString j "\n"
+		
+		writeFileUTF8 (fname) b
+	)
+)
 
 struct BatchGLBConverterWrapper (
 	selfPath = getFilenamePath (getThisScriptFilename()),
@@ -45,7 +267,10 @@ struct BatchGLBConverterWrapper (
 	texturesQueue = #(),
 	normalsQueue = #(),
 	outPath = "",
-		
+	json = #(),
+	j = JsonWrapper(),
+	w = WebGLPlayerWrapper(),
+	
 	fn isValidObject o = (
 		return o.material != undefined and isValidNode o and not isDeleted o and canConvertTo o Editable_mesh
 	),
@@ -889,13 +1114,22 @@ struct BatchGLBConverterWrapper (
 		local pp = p + n + @"\"
 		makeDir pp all: true
 		local i = pp + n + ".gltf"
-		local o = p + n + ".glb" 
+		local o = p + n + ".glb"
+		local preview = p + n + ".png"
 		
 		deleteFile o
 		exportFile i #noPrompt selectedOnly: true
 		deleteFile (i + ".log")
 		
 		packGLTF i o
+		
+		-- JSON: Filename
+		this.j.addData this.json "name" (n + ".glb")
+		-- JSON: Scenename
+		this.j.addData this.json "scene" maxFileName
+		
+		-- Web Preview
+		w.run o preview
 		
 		return o
 		-- Remove ktx2
@@ -912,7 +1146,57 @@ struct BatchGLBConverterWrapper (
 		HiddenDOSCommand cmd
 	),
 	
+	
+	fn getFileMb f = (
+		if (not doesFileExist f) do return 0.0
+		s = (getFileSize f) / 1048576.0
+		return ((s * 100) as integer) / 100.0
+	),
+	
+	fn polyCount s = (
+        local iPoly = 0
+		local iVert = 0
+        
+        local a = for i in s collect (getPolygonCount i)
+        for i in a do (
+			iPoly += i[1]
+			iVert += i[2]
+		)
+		
+        sPoly = iPoly as string
+        sVert = iVert as string
+		
+		return #(sPoly, sVert)
+	),
+	
+	fn getDim s = (
+        local d = s.max - s.min
+        
+        d = for i in 1 to 3 collect ((d[i] * 100) as integer / 100.0 ) as string
+        
+        return d[1] + " x " + d[2] + " x " + d[3]
+    ),
+	
+	fn getUnits = (
+        local u = trimLeft (units.SystemType as string) "#"
+        u[1] = toUpper u[1]
+        return u
+    ),
+	
+	fn getMaterialsCnt = (
+		if (glTFMaterial == undefined) do return 0
+		local cc = 0
+		
+		for o in objects do (
+			local c = (getClassInstances glTFMaterial target: o).count
+			cc += c
+		)
+			
+		return cc
+	),
+	
 	fn run out: "" scn: undefined ao: undefined = (
+		this.json = #()
 		SetQuietMode true
 		/* 
 			@Input
@@ -964,6 +1248,24 @@ struct BatchGLBConverterWrapper (
 		if (ao.enabled) do this.createAOmap ao: ao
 		
 		local o = this.exportGLB out n: scn.name
+		
+		-- JSON: Data		
+		local glbPolys = polyCount objects
+		local glbSize = getFileMb o
+		
+		this.j.addData this.json "ao" ao.enabled
+		this.j.addData this.json "aoType" ao.type
+		this.j.addData this.json "sizeMb" glbSize
+		this.j.addData this.json "polys" glbPolys[1]
+		this.j.addData this.json "verts" glbPolys[2]		
+		this.j.addData this.json "size" (getDim objects)		
+		this.j.addData this.json "units" (getUnits())
+		this.j.addData this.json "objectsCount" (objects.count)
+		this.j.addData this.json "materialsCount" (getMaterialsCnt())
+		
+		-- Write JSON
+		local jsonFile = out + scn.name + ".json"		
+		this.j.writeJson jsonFile this.json	
 		
 		if (scn.del != undefined) do rmDir scn.del
 		
@@ -1632,7 +1934,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			)
 			
 			progressEnd()			
-			resetMaxFile #noprompt
+			--resetMaxFile #noprompt
 			SetQuietMode false
 			
 			updateLbx()
@@ -1897,7 +2199,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				floaterBatchGLBConverter.pos = [x, y] 
 			)		
 		)
-
+		
 		on _rAboutGCGLBConverter close do (
 			local p = floaterBatchGLBConverter.pos
 			
