@@ -20,6 +20,9 @@ Script for bulk conversion models to GLB=
 + Added: JSON info=
 + Added: WebPreview with screenshots=
 
+[1.0.3]
++ Added: Support Blender export=
+
 [FILES]
 Install.mcr=
 jpegoptim.exe=
@@ -33,6 +36,13 @@ xnormal.bat=
 xnormal.xml=
 lowes-viewer.zip=
 chrome.bat=
+archivate.bat=
+blender-screenshot.bat=
+blender-zoom-extends.py=
+blender-import-glb.py=
+blender-bg-import.bat=
+blender-gen-ini.py=
+blender-bg-run.bat=
 
 [SCRIPT]
 */
@@ -42,74 +52,6 @@ chrome.bat=
 	Transluency -> Transmission
 
 */
-
-struct WebGLPlayerWrapper (
-	currentPath = getFilenamePath (getThisScriptFilename()),
-	zippedPlayer = currentPath + "lowes-viewer.zip",
-	playerPath = currentPath + @"lowes-viewer\",
-	webserver = playerPath + "webserver.bat",
-	localhost = "",
-		
-	fn extractZip f o = (
-        if (f == undefined or not doesFileExist f) do return false
-        if (getFilenameType f != ".zip") do return false
-		
-		local args = f + ";" + o
-		args = substituteString args "/" @"\"
-		
-		local cmd = "start /b /min extract.bat \"" +  args + "\""
-		
-		local curDir = sysInfo.currentDir
-		sysInfo.currentDir = currentPath
-		
-		hiddenDosCommand cmd exitCode: &exitcode donotwait: true
-		
-		sysInfo.currentDir = curDir
-    ),
-
-	fn makeBrowserScreenshot s = (		
-		curDir = sysInfo.currentDir
-		sysInfo.currentDir = currentPath	
-		
-		local args = localhost + ";" + s
-		local cmd2 = "chrome.bat \"" +  args + "\""
-		hiddenDosCommand cmd2 exitcode:&exitcode	
-		
-		sysInfo.currentDir = curDir
-	),
-	
-	fn startWebServer f = (
-		if (doesFileExist zippedPlayer and not doesFileExist webserver) do (
-			extractZip	zippedPlayer playerPath
-		)
-		
-		local port = "33333"
-		local ne = filenameFromPath f
-		local n = getFilenameFile f
-		local destGLB = playerPath + ne 
-		localhost = "http://localhost:" + port + "/?model=" + n
-		
-		if (not doesFileExist webserver) do return  messageBox "Can't find Lowes Player or Webserver, please reinstall script!" title: "Warining!"
-		
-		for i in (getFiles (playerPath + "*.glb")) do deleteFile i
-		
-		deleteFile destGLB
-		copyFile f destGLB
-		
-		curDir = sysInfo.currentDir
-		sysInfo.currentDir = playerPath	
-		
-		local args = playerPath + ";" + port
-		local cmd = "start /b /min " + (filenameFromPath webserver) + " \"" +  args + "\""
-		
-		hiddenDosCommand cmd exitcode:&exitcode	
-	),
-	
-	fn run f s = (
-		startWebServer f
-		makeBrowserScreenshot s
-	)
-)
 
 struct dateTime (
     n = (dotNetClass "System.DateTime").Now,
@@ -260,6 +202,313 @@ struct JsonWrapper (
 	)
 )
 
+struct BlenderGLBWrapper (
+	currentPath = getFileNamePath (getThisScriptFileName()),
+	pythonScriptGenIni = currentPath + "blender-gen-ini.py",	
+	pythonScriptconvertGLB2Blend = currentPath + "blender-import-glb.py",	
+	pythonScriptZoomExtends = currentPath + "blender-zoom-extends.py",	
+	blenderLocation = @"C:\Program Files\Blender Foundation\",
+	file = "",
+	ini = "",
+	zip = "",
+	preview = "",
+	outFile = "",
+	tmpOut = "",
+	json = "",
+	jsonFile = "",
+	j = JsonWrapper(),
+	
+	fn archivate n o = (
+		if (not doesDirectoryExist o) do return false
+		
+		local args = n + ";" + o
+		args = substituteString args "/" @"\"
+		
+		local cmd = "archivate.bat \"" +  args + "\""
+		
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath
+		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+		
+		sysInfo.currentDir = curDir
+	),	
+	fn getFileMb f = (
+		if (not doesFileExist f) do return 0.0
+		s = (getFileSize f) / 1048576.0
+		return ((s * 100) as integer) / 100.0
+	),
+	fn getBlenderExe = (
+		local d = (getDirectories (blenderLocation + "*"))[1]			
+		if (d == undefined) do return undefined
+		local b = d + "blender.exe"
+		if (not doesFileExist b) do return undefined
+		return b
+	),
+	fn isBlenderExist = (
+		local b = getBlenderExe()
+		if (b == undefined) do return false
+		return true
+	),
+	fn runBatch script = (
+		local f = outFile
+		local b = getBlenderExe()
+		
+		local args = b + ";" + f + ";" + script
+		args = substituteString args "/" @"\"
+		
+		local cmd = "blender-bg-run.bat \"" +  args + "\""
+		
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath
+		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+		
+		sysInfo.currentDir = curDir
+	),
+	fn runImport script bat: "blender-bg-import.bat" = (
+		local f = file
+		local o = outFile
+		local b = getBlenderExe()
+		
+		local args = b + ";" + script + ";" + f + ";" + o
+		args = substituteString args "/" @"\"
+		
+		local cmd = bat + " \"" +  args + "\""
+		
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath
+		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+		
+		sysInfo.currentDir = curDir		
+	),
+	
+	fn getRealName = (
+		if (maxFileName != "") do (
+			local n = getFilenameFile maxFileName
+			
+			n = substituteString n "GC-Repack-" ""
+			n = substituteString n "GC-" ""
+			n = substituteString n "-Corona" ""
+			n = substituteString n "-VRay" ""
+			n = substituteString n "-V-Ray" ""
+			for i in #{2010..2050} do n = substituteString n (i as string) ""
+			n = substituteString n "---" ""
+			n = substituteString n "---" ""
+			n = substituteString n "--" ""
+			n = substituteString n "--" ""
+			n = trimLeft (trimRight n "- ") "- "			
+			n = "GC-Repack-" + n
+			
+			return n
+		)
+		
+		return undefined
+	),
+	fn makeArchive = (
+		local n = getRealName()
+		local p = getFilenamePath outFile
+		local ext = getFilenameType  outFile
+		
+		if (n != undefined) then (		
+			renameFile outFile (p + n + ext)
+		) else (
+			n = getFilenameFile outFile
+		)
+		
+		archivate zip tmpOut
+		j.addData json "name" (n + ext)				
+		j.addData json "scene" (maxFileName)
+		j.addData json "sizeMb" (getFileMb zip)				
+	),	
+	fn deleteBlenderIni = (
+		deleteFile ini
+	),
+	fn getBlenderData sec: "INDEX" key: undefined = (		
+		if (key != undefined) do (
+			return getINISetting ini sec key
+		)
+		
+		return getINISetting ini sec
+	),
+	fn getDim = (		
+		local w = getBlenderData sec: "DIMENSION" key: "width"
+		local h = getBlenderData sec: "DIMENSION" key: "height"
+		local l = getBlenderData sec: "DIMENSION" key: "length"
+		
+		return w + " x " + l + " x " + h
+	),
+	fn getUnits = (
+		local u = getBlenderData key: "system_units"	
+		u = toLower u
+		u[1] = toUpper u[1]
+		
+		case u of (
+			"Metric": return "Meters"
+			"Imperial": return "Inches"
+		)
+		
+		return u
+	),
+	fn isPackedImages = (
+		return (getBlenderData key: "is_packed_images") == "True"
+	),	
+	fn getTextures = (
+		return getBlenderData sec: "TEXTURES"
+	),
+	fn getPolys = (
+		return getBlenderData key: "polys"
+	),
+	fn getVerts = (
+		return getBlenderData key: "vert"
+	),
+	fn getRender = (
+		local r = getBlenderData key: "render"
+		
+		if (matchpattern r pattern:"BLENDER_RENDER") do return "Blender Render"
+		if (matchpattern r pattern:"CYCLES") do return "Cycles"
+		if (matchpattern r pattern:"EEVEE") do return "Eevee"
+		if (matchpattern r pattern:"BLENDER_EEVEE") do return "Eevee"
+		if (matchpattern r pattern:"WORKBENCH") do return "Workbench Render"
+		if (matchpattern r pattern:"LUXCORE") do return "LuxCoreRender"
+		if (matchpattern r pattern:"RPR") do return "Radeon ProRender"
+		if (matchpattern r pattern:"RADEON_PRORENDER") do return "Radeon ProRender"
+		if (matchpattern r pattern:"*OCTANE*") do return "OctaneRender"
+		if (matchpattern r pattern:"APPLESEED") do return "Appleseed Render"
+		if (matchpattern r pattern:"*CORONA*") do return "Corona"
+		if (matchpattern r pattern:"*VRAY*") do return "VRay"
+		if (matchpattern r pattern:"*renderman*") do return "RenderMan"
+		if (matchpattern r pattern:"*render_man*") do return "RenderMan"
+		
+		return r
+	),
+	fn getVer = (
+		return getBlenderData key: "blender_ver"		
+	),	
+	fn makeScreenshot = (
+		local f = outFile
+		local b = getBlenderExe()
+		local s = pythonScriptZoomExtends
+		
+		local args = b + ";" + f + ";" + s + ";" + preview
+		args = substituteString args "/" @"\"
+		
+		local cmd = "blender-screenshot.bat \"" +  args + "\""
+		print cmd
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath
+		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+		
+		sysInfo.currentDir = curDir
+		
+	),
+	fn init glb: "" name: "" = (
+		json = #()
+		
+		local p = getFilenamePath glb
+		local pp = p + name + @"\"		
+		makeDir pp all: true
+		
+		file = glb		
+		preview = p + name + ".png"
+		zip = p + name + ".zip"
+		outFile = pp + name + ".blend"
+		ini = outFile + ".ini"
+		jsonFile = p + name + ".json"
+		tmpOut = pp		
+	),
+	fn generateBlenderIni = (
+		runBatch pythonScriptGenIni
+		
+		j.addData json "program" "blender"
+		j.addData json "version" (getVer())
+		j.addData json "rendersion" (getRender())
+		j.addData json "size" (getDim())
+		j.addData json "polys" (getPolys())
+		j.addData json "verts" (getVerts())
+		j.addData json "units" (getUnits())
+			
+		deleteBlenderIni()	
+	),
+	fn convertGLB2Blend = (
+		runImport pythonScriptconvertGLB2Blend
+		generateBlenderIni()
+	),
+	fn makeJson = (
+		j.writeJson jsonFile json
+	)
+)
+
+struct WebGLPlayerWrapper (
+	currentPath = getFilenamePath (getThisScriptFilename()),
+	zippedPlayer = currentPath + "lowes-viewer.zip",
+	playerPath = currentPath + @"lowes-viewer\",
+	webserver = playerPath + "webserver.bat",
+	localhost = "",
+		
+	fn extractZip f o = (
+        if (f == undefined or not doesFileExist f) do return false
+        if (getFilenameType f != ".zip") do return false
+		
+		local args = f + ";" + o
+		args = substituteString args "/" @"\"
+		
+		local cmd = "start /b /min extract.bat \"" +  args + "\""
+		
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath
+		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: true
+		
+		sysInfo.currentDir = curDir
+    ),
+
+	fn makeBrowserScreenshot s = (		
+		curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath	
+		
+		local args = localhost + ";" + s
+		local cmd2 = "chrome.bat \"" +  args + "\""
+		hiddenDosCommand cmd2 exitcode:&exitcode	
+		
+		sysInfo.currentDir = curDir
+	),
+	
+	fn startWebServer f = (
+		if (doesFileExist zippedPlayer and not doesFileExist webserver) do (
+			extractZip	zippedPlayer playerPath
+		)
+		
+		local port = "33333"
+		local ne = filenameFromPath f
+		local n = getFilenameFile f
+		local destGLB = playerPath + ne 
+		localhost = "http://localhost:" + port + "/?model=" + n
+		
+		if (not doesFileExist webserver) do return  messageBox "Can't find Lowes Player or Webserver, please reinstall script!" title: "Warining!"
+		
+		for i in (getFiles (playerPath + "*.glb")) do deleteFile i
+		
+		deleteFile destGLB
+		copyFile f destGLB
+		
+		curDir = sysInfo.currentDir
+		sysInfo.currentDir = playerPath	
+		
+		local args = playerPath + ";" + port
+		local cmd = "start /b /min " + (filenameFromPath webserver) + " \"" +  args + "\""
+		
+		hiddenDosCommand cmd exitcode:&exitcode	
+	),
+	
+	fn run f s = (
+		startWebServer f
+		makeBrowserScreenshot s
+	)
+)
+
 struct BatchGLBConverterWrapper (
 	selfPath = getFilenamePath (getThisScriptFilename()),
 	texturesQueueNames = #(),
@@ -269,7 +518,7 @@ struct BatchGLBConverterWrapper (
 	outPath = "",
 	json = #(),
 	j = JsonWrapper(),
-	w = WebGLPlayerWrapper(),
+	w = WebGLPlayerWrapper(),	
 	
 	fn isValidObject o = (
 		return o.material != undefined and isValidNode o and not isDeleted o and canConvertTo o Editable_mesh
@@ -1408,7 +1657,7 @@ try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
 
 if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 
-	global floaterBatchGLBConverter = newRolloutFloater "GLB Converter" 300 800
+	global floaterBatchGLBConverter = newRolloutFloater "GLB Converter" 300 810
 
 	fn checkArchiveForErrors = (
 		try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
@@ -1669,6 +1918,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			checkbox cbxAODenoiseXNormal "Use VRay Denoiser" align: #left offset: [15, 0]
 		)
 		
+		group "Additional Formats" (
+			checkbox cbxMakeBlend "Blender (.blend)"	
+		)
+		
 		button btnBatchExport "Batch Export (0)" height: 36 width: 260 offset: [0, 10]
 		
 		global BATCH_GLB_CONVERTER_FILES = #()
@@ -1693,6 +1946,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			cbxUseCoronaAO.checked = '*'.get "cbxUseCoronaAO" type: #bool_false
 			cbxUseXNormalAO.checked = '*'.get "cbxUseXNormalAO" type: #bool_true
 			cbxAODenoiseXNormal.checked = '*'.get "cbxAODenoiseXNormal" type: #bool_false
+			cbxMakeBlend.checked = '*'.get "cbxMakeBlend" type: #bool_false
 			
 			if (cbxUseXNormalAO.checked) do (
 				cbxUseCoronaAO.checked = false
@@ -1756,11 +2010,18 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			struct tmp (path, filename, name, glb, isGlbExist, type, ext, ini, extractPath, isChecked, scene)
 			
+			local badPattern = #("*-BLEND")
+			
 			for f in ff do (
 				local p = getFilenamePath f
 				local n = getFilenameFile f
 				local ext = getFilenameType f
 				local extractPath = p + n + @"\"
+				
+				local skip = false
+				for pt in badPattern where MatchPattern n pattern: pt do skip = true
+				
+				if (skip) do continue
 				
 				local glb = p + n + "-GLB.glb"										
 				local ini = extractPath + "glb.ini"
@@ -1854,6 +2115,14 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			if (ss.count == 0) do return messageBox "Please select items from list!" title: "Warning!"
 			
+			local blendGLBMgr = BlenderGLBWrapper()
+			
+			-- If Blender not exist!
+			if (cbxMakeBlend.checked and not blendGLBMgr.isBlenderExist()) do (
+				messageBox "Blender not installed!" title: "Error!"
+				return false
+			)
+			
 			local xNormal = ::API_BATCH_GLB_CONVERTER.getXNormal()
 			if (cbxUseXNormalAO.checked and xNormal == undefined) do (
 				messageBox "xNormal not installed!" title: "Error!"
@@ -1913,6 +2182,17 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				r.opened = true
 				
 				local glb = ::API_BATCH_GLB_CONVERTER.run scn: r out: p ao: ao
+				
+				if (getProgressCancel() or keyboard.escPressed) do return false
+				
+				-- Bender
+				if (cbxMakeBlend.checked) do (					
+					blendGLBMgr.init glb: glb name: (f.name + "-BLEND")
+					blendGLBMgr.convertGLB2Blend()
+					blendGLBMgr.makeScreenshot()
+					blendGLBMgr.makeArchive()
+					blendGLBMgr.makeJson()
+				)
 				
 				if (getProgressCancel() or keyboard.escPressed) do return false
 				
@@ -2022,6 +2302,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		on cbxAODenoise changed v do '*'.add  "cbxAODenoise" v		
 		on spnAOXNormalResolution changed v do '*'.add  "spnAOXNormalResolution" v	
 		on cbxAODenoiseXNormal changed v do '*'.add  "cbxAODenoiseXNormal" v		
+		on cbxMakeBlend changed v do '*'.add  "cbxMakeBlend" v		
 		
 		on cbxUseCoronaAO changed v do (			
 			'*'.add  "cbxUseXNormalAO" false
