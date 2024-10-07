@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.0.2
+VERSION=1.0.4
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -22,6 +22,9 @@ Script for bulk conversion models to GLB=
 
 [1.0.3]
 + Added: Support Blender export=
+
+[1.0.4]
+- BugFix: Chain of fixes for prod computer=
 
 [FILES]
 Install.mcr=
@@ -289,6 +292,8 @@ struct BlenderGLBWrapper (
 			local n = getFilenameFile maxFileName
 			
 			n = substituteString n "GC-Repack-" ""
+			n = substituteString n "Repack-" ""
+			n = substituteString n "repack-" ""
 			n = substituteString n "GC-" ""
 			n = substituteString n "-Corona" ""
 			n = substituteString n "-VRay" ""
