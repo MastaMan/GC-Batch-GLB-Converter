@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.0.4
+VERSION=1.0.5
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -25,6 +25,10 @@ Script for bulk conversion models to GLB=
 
 [1.0.4]
 - BugFix: Chain of fixes for prod computer=
+
+[1.0.5]
++ Added: New options for check list=
+- BugFix: Small fixes and improvements=
 
 [FILES]
 Install.mcr=
@@ -1676,7 +1680,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			)
 			
 			group "Please Check Next Issues" (
+				checkbox cbxModelUngroupped "No groups in scene (Explode groups)" align: #left enabled: false
 				checkbox cbxOneModelInScene "One model in the scene" align: #left enabled: false
+				checkbox cbxModelInFront "Model correct rotated in front view" align: #left enabled: false
 				checkbox cbxLogicalAttached "Model logically attached (Explode groups first!)" align: #left enabled: false
 				checkbox cbxCentered "Model centered" align: #left enabled: false
 				checkbox cbxCorrectPivot "Model has proper Pivot" align: #left enabled: false
@@ -1696,7 +1702,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			)
 			
 			local modelChecks = #(
+				cbxModelUngroupped,
 				cbxOneModelInScene,
+				cbxModelInFront,
 				cbxLogicalAttached,
 				cbxCentered,
 				cbxCorrectPivot,
@@ -1819,13 +1827,17 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					)
 					
 					isErrorOpen = not r.opened
-				) else (					
+				) else (
 					try (resetMaxFile #noprompt) catch ()
 					loadMaxFile (current.extractPath + scn) quiet: true
 					if (maxFileName == "") do isErrorOpen = true
 				)
 				
 				if (isErrorOpen) do messageBox "Error while opening scene!\nTry to clear extracted files and repeat againg!" title: "Error!"
+				
+				max tool zoomextents
+				max tool maximize
+				max views redraw
 				
 				updateUI()
 				
@@ -1889,7 +1901,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			)
 		)
 		
-		CreateDialog _rBatchGCGLBChecker 280 400
+		CreateDialog _rBatchGCGLBChecker 280 440
 	)
 
 	rollout _rBatchGCGLBConverter "GLB Converter" category: 1 (
@@ -2015,7 +2027,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			struct tmp (path, filename, name, glb, isGlbExist, type, ext, ini, extractPath, isChecked, scene)
 			
-			local badPattern = #("*-BLEND")
+			local badPattern = #("*-BLEND", "*-FBX-OBJ", "*-MaxMerger", "*-MaxOriginal")
 			
 			for f in ff do (
 				local p = getFilenamePath f

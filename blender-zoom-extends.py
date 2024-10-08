@@ -1,5 +1,7 @@
 import bpy
 
+bpy.context.preferences.view.show_splash = False
+
 def get_view3d():
     for window_manager in bpy.data.window_managers:
         for window in window_manager.windows:
