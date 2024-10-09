@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.0.5
+VERSION=1.0.6
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -29,6 +29,9 @@ Script for bulk conversion models to GLB=
 [1.0.5]
 + Added: New options for check list=
 - BugFix: Small fixes and improvements=
+
+[1.0.6]
+- BugFix: Small fixes=
 
 [FILES]
 Install.mcr=
@@ -59,6 +62,187 @@ blender-bg-run.bat=
 	Transluency -> Transmission
 
 */
+
+struct GCModelSplitWrapper (
+	folder = "",
+	id = "",
+	root = "",
+	ptrnGC = #("GC-*-Corona.max", "GC-*-VRay.max"),
+	ptrnExport = #("*.fbx", "*.obj", "*.mtl", "*.mat"),
+	postfixOriginal = "-MaxOriginal",
+	postfixMerger = "-MaxMerger",
+	postfixExport = "-FBX-OBJ",
+	currentPath = getFileNamePath (getThisScriptFileName()),
+	
+	fn archivate n o = (
+		if (not doesDirectoryExist o) do return false
+		
+		local args = n + ";" + o
+		args = substituteString args "/" @"\"
+		
+		local cmd = "archivate.bat \"" +  args + "\""
+		
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath
+		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+		
+		sysInfo.currentDir = curDir
+	),
+	fn isMatch s pattern: #() = (
+		for p in pattern do (
+			if (MatchPattern s pattern: p ignoreCase: true) do return true
+		)
+		
+		return false
+	),
+	fn isSplitted = (
+		local s = true
+		local postfixes = #(postfixOriginal, postfixMerger, postfixExport)
+		for p in postfixes do (
+			local f = root + id + postfixExport + ".zip"
+			if (not doesFileExist f) do s = false
+		)
+		
+		return true
+	),
+	fn trim s tag: "- "= (
+		return trimLeft (trimRight s tag) tag
+	),
+	fn getId = (
+		local a = filterString folder @"\"
+		return a[a.count]
+	),
+	fn getRoot = (	
+		return substring folder 1 (folder.count - id.count - 1)
+	),
+	fn getFilesRecursive r pattern: "*.*" = (
+        local dd = getDirectories (r + "/*")
+        local ff = getFiles (r + "/" + pattern)
+        for i in dd do join ff (getFilesRecursive i pattern: pattern)
+        
+        return ff
+    ),
+	fn getOriginalFiles = (
+		local files = getFiles (folder + "*.max")
+		local o = #()
+		
+		for f in files do (
+			local n = filenameFromPath f
+			if (isMatch n pattern: ptrnGC) do continue
+			append o f
+		)
+		
+		return o
+	),	
+	fn getGCFiles = (
+		local files = getFiles (folder + "*.max")
+		local o = #()
+		
+		for f in files do (
+			local n = filenameFromPath f
+			if (isMatch n pattern: ptrnGC) do append o f			
+		)
+		
+		return o
+	),
+	fn getOrignalName f = (
+		local n = filenameFromPath f
+		n = substituteString n "Author-" ""
+		n = substituteString n "Original-Scene-" ""
+		n = substituteString n "---" "-"
+		n = substituteString n "--" "-"
+		n = trim n
+		return n
+	),
+	fn getExportName f = (
+		local n = filenameFromPath f
+		n = substituteString n "-fbx" ""
+		n = substituteString n "-obj" ""
+		n = trim n
+		return n
+	),
+	fn getMergerName f = (
+		local n = filenameFromPath f
+		n = substituteString n "GC-repack-" ""
+		n = substituteString n "GC-Repack-" ""
+		n = substituteString n "GC-" ""
+		n = substituteString n "---" "-"
+		n = substituteString n "--" "-"
+		n = trim n
+		return n
+	),
+	fn copyMaps p = (
+		local maps = folder + @"maps\*"
+		local dest = p + @"maps\"
+		makeDir dest all: true
+		local cmd = "xcopy \"" + maps + "\" \"" + dest + "\" /E /I /C /Y"
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+	),		
+	fn createMaxOriginal = (
+		local n = id + postfixOriginal
+		local p = root + n + @"\"
+		local zip = root + n + ".zip"
+		local files = getOriginalFiles()
+		
+		makeDir p all: true
+		
+		for f in files do (
+			local origName = getOrignalName f
+			copyFile f (p + origName)
+		)
+		
+		copyMaps p
+		
+		archivate zip p
+	),
+	fn createMaxMerger = (
+		local n = id + postfixMerger
+		local p = root + n + @"\"
+		local zip = root + n + ".zip"
+		local files = getGCFiles()
+		
+		makeDir p all: true
+		
+		for f in files do (
+			local mergerName = "GC-Repack-" + (getMergerName f)
+			copyFile f (p + mergerName)
+		)
+		
+		copyMaps p
+		
+		archivate zip p
+	),
+	fn createFbxObj = (
+		local tmp = getFilesRecursive folder				
+		local n = id + postfixExport
+		local p = root + n + @"\"
+		local zip = root + n + ".zip"
+		local files = for f in tmp where (isMatch f pattern: ptrnExport) collect f
+		
+		for f in files do (
+			local exportName = getExportName f
+			
+			makeDir p all: true
+			
+			copyFile f (p + exportName)
+		)
+		
+		copyMaps p
+		
+		archivate zip p
+	),	
+	fn init p = (
+		folder = p
+		id = getId()
+		root = getRoot()
+		
+		local files = getFiles (folder + "*.max")
+		if (files.count == 0) do return #error_no_max_files
+		
+		return #inited
+	)
+)
 
 struct dateTime (
     n = (dotNetClass "System.DateTime").Now,
@@ -1799,6 +1983,19 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				checkArchiveForErrors()
 			)
 			
+			fn splitFiles = (
+				local splitterMgr = GCModelSplitWrapper()
+				splitterMgr.init maxFilePath
+				splitterMgr.createMaxOriginal()
+				splitterMgr.createFbxObj()
+				splitterMgr.createMaxMerger()
+				
+				local s = splitterMgr.isSplitted()
+				setter "splitted" s
+				
+				return s
+			)
+			
 			on _rBatchGCGLBChecker open do (
 				setPos()
 				
@@ -1823,7 +2020,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					local r = ::API_BATCH_GLB_CONVERTER.load current.filename
 					
 					if (r.opened) do (
-						setter "scene" r.maxName
+						setter "scene" r.maxName												
 					)
 					
 					isErrorOpen = not r.opened
@@ -1834,6 +2031,11 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				)
 				
 				if (isErrorOpen) do messageBox "Error while opening scene!\nTry to clear extracted files and repeat againg!" title: "Error!"
+				
+				-- If not splitted and not checked yet
+				if (getter "checked" != "true" and getter "splitted" != "true") do (
+					splitFiles()
+				)
 				
 				max tool zoomextents
 				max tool maximize
@@ -2019,13 +2221,17 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			return (getINISetting ini "index" "checked") == "true"
 		)
 		
+		fn getSplitted ini = (
+			return (getINISetting ini "index" "splitted") == "true"
+		)
+		
 		fn getData = (
 			::BATCH_GLB_CONVERTER_FILES = #()
 			local dd = '*'.get "tnt_path"
 			
 			local ff = getFiles (dd + "*.zip")
 			
-			struct tmp (path, filename, name, glb, isGlbExist, type, ext, ini, extractPath, isChecked, scene)
+			struct tmp (path, filename, name, glb, isGlbExist, type, ext, ini, extractPath, isChecked, isSplitted, scene)
 			
 			local badPattern = #("*-BLEND", "*-FBX-OBJ", "*-MaxMerger", "*-MaxOriginal")
 			
@@ -2047,12 +2253,13 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				local filename = f
 				
 				
-				local isChecked = getChecked ini				
+				local isChecked = getChecked ini
+				local isSplitted = getSplitted ini
 				local isGlbExist = doesFileExist glb
 				
 				local scn = getScene ini
 				
-				append ::BATCH_GLB_CONVERTER_FILES (tmp path: p name: n filename: filename glb: glb isGlbExist: isGlbExist type: type ext: ext ini: ini extractPath: extractPath isChecked: isChecked scene: scn)
+				append ::BATCH_GLB_CONVERTER_FILES (tmp path: p name: n filename: filename glb: glb isGlbExist: isGlbExist type: type ext: ext ini: ini extractPath: extractPath isChecked: isChecked isSplitted: isSplitted scene: scn)
 			)
 			
 			return ::BATCH_GLB_CONVERTER_FILES
@@ -2094,13 +2301,16 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			for i in ::BATCH_GLB_CONVERTER_FILES do (
 				local glbStatus = ""
 				local checkStatus = ""
+				local splitStatus = ""
 				if (i.isGlbExist) do glbStatus = "[GLB]"
 				
 				i.isChecked = getChecked i.ini
+				i.isSplitted = getSplitted i.ini
 				i.scene = getScene i.ini
 				
 				if (i.isChecked) do checkStatus = "[Checked]"
-				append o (formatString "$1 $2 $3" v: #(i.name, checkStatus, glbStatus))
+				if (i.isSplitted) do splitStatus = "[Split]"
+				append o (formatString "$1 $2 $3 $4" v: #(i.name, checkStatus, glbStatus, splitStatus))
 			)
 			
 			lbxList.items = o

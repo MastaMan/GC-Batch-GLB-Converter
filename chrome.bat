@@ -17,7 +17,7 @@ for /f "tokens=1,2 delims=;" %%I in (%input%) do (
 )
 
 taskkill /f /im chrome.exe
-start chrome.exe --guest --incognito --start-fullscreen "%arg1%"
+start chrome.exe --guest --disable-features=Translate --incognito --start-fullscreen "%arg1%"
 
 timeout /t 10 /nobreak > nul
 
