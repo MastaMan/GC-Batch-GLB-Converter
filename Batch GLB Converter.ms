@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.0.6
+VERSION=1.0.7
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -32,6 +32,9 @@ Script for bulk conversion models to GLB=
 
 [1.0.6]
 - BugFix: Small fixes=
+
+[1.0.7]
++ Added: Support CoronaRaySwitchMtl=
 
 [FILES]
 Install.mcr=
@@ -588,7 +591,7 @@ struct BlenderGLBWrapper (
 		args = substituteString args "/" @"\"
 		
 		local cmd = "blender-screenshot.bat \"" +  args + "\""
-		print cmd
+		
 		local curDir = sysInfo.currentDir
 		sysInfo.currentDir = currentPath
 		
@@ -1088,6 +1091,24 @@ struct BatchGLBConverterWrapper (
 		for i in a do (
 			if (i.renderIterations > i.iterations) do i.iterations = i.renderIterations
 			try (i.isolineDisplay = false) catch ()
+		)
+	),
+	
+	fn neutralizeRaySwitch = (
+		for i in getClassInstances CoronaRaySwitchMtl do (
+			if (classOf i.giMtl == CoronaPhysicalMtl and i.giMtl.baseTexmap == undefined) then (
+				if (i.directMtl != undefined) then (
+					replaceInstances i i.directMtl
+				) else if (i.reflectMtl != undefined) then (
+					replaceInstances i i.reflectMtl
+				) else if (i.refractMtl != undefined) then (
+					replaceInstances i i.refractMtl
+				) else (
+					replaceInstances i i.giMtl
+				)
+			) else if (i.giMtl != undefined) do (
+				replaceInstances i i.giMtl
+			)
 		)
 	),
 	
@@ -1677,6 +1698,7 @@ struct BatchGLBConverterWrapper (
 		-- Simplify maps
 		this.neutralizeFalloff()
 		this.neutralizeCoronaAO()
+		this.neutralizeRaySwitch()
 		this.neutralizeCoronaLayered()
 		
 		-- Convert to GLTF Material
