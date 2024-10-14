@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.0.7
+VERSION=1.0.8
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -35,6 +35,10 @@ Script for bulk conversion models to GLB=
 
 [1.0.7]
 + Added: Support CoronaRaySwitchMtl=
+
+[1.0.8]
++ Added: 3Ds Max version in JSON=
+- BugFix: Can't receive ID=
 
 [FILES]
 Install.mcr=
@@ -114,7 +118,7 @@ struct GCModelSplitWrapper (
 	),
 	fn getId = (
 		local a = filterString folder @"\"
-		return a[a.count]
+		return try (a[a.count]) catch ("0000")
 	),
 	fn getRoot = (	
 		return substring folder 1 (folder.count - id.count - 1)
@@ -1587,6 +1591,7 @@ struct BatchGLBConverterWrapper (
 		packGLTF i o
 		
 		-- JSON: Filename
+		this.j.addData this.json "version" (getCurrentMaxVersion())
 		this.j.addData this.json "name" (n + ".glb")
 		-- JSON: Scenename
 		this.j.addData this.json "scene" maxFileName
