@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.0.8
+VERSION=1.0.9
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -40,6 +40,18 @@ Script for bulk conversion models to GLB=
 + Added: 3Ds Max version in JSON=
 - BugFix: Can't receive ID=
 
+[1.0.9]
++ Added: Context menu=
++ Added: QA GLB + Previews=
++ Added: Web image preview player=
++ Added: GreatCatalog website item preview by file id=
++ Added: Ability to remove all files depends with archive=
++ Added: Remember selection after reload listbox=
+* Changed: Lot of refactoring=
+- BugFix: Not updated listbox after remove unpacked folder=
+
+
+
 [FILES]
 Install.mcr=
 jpegoptim.exe=
@@ -52,7 +64,9 @@ normalmap.exe=
 xnormal.bat=
 xnormal.xml=
 lowes-viewer.zip=
-chrome.bat=
+chrome-screenshot.bat=
+chrome-preview.bat=
+chrome.bat=deleted
 archivate.bat=
 blender-screenshot.bat=
 blender-zoom-extends.py=
@@ -69,6 +83,48 @@ blender-bg-run.bat=
 	Transluency -> Transmission
 
 */
+
+struct QueryDeleteFiles (
+	rQueryMessage = undefined,
+	msg = "Do you realy want to delete selected files (+Generated files)?",
+	title = "Confirm?",
+	result = #no,
+	fn show = (
+		if (rQueryMessage != undefined) do try (DestroyDialog rQueryMessage) catch ()
+		rollout rQueryMessage "" (		
+			label lblMsg "" align: #left offset: [45, 20]
+			checkbox cbxRemove "Remove archives?" align: #left offset: [42, 5]
+			button btnYes "Yes" across: 2 width: 70 height: 25 align: #right offset: [160, 20]
+			button btnNo "No" width: 70 height: 25 align: #right offset: [0, 20]
+			dotNetControl pictureBox "System.Windows.Forms.PictureBox" width:32 height:32 pos: [12, 28]
+			
+			on rQueryMessage open do (
+				local bg = (colorMan.getColor #background * 255) as color
+				local i = dotNetClass "System.Drawing.SystemIcons"
+				pictureBox.image = i.Question.ToBitmap()
+				local clr = dotNetClass "System.Drawing.Color"
+				pictureBox.BackColor = clr.FromArgb bg.r bg.g bg.b
+				
+				lblMsg.caption = this.msg
+				rQueryMessage.title = this.title
+			)
+			
+			on btnNo pressed do (
+				this.result = #no
+				try (DestroyDialog rQueryMessage) catch ()
+			)
+			
+			on btnYes pressed do (
+				this.result = #files
+				if (cbxRemove.checked) do this.result = #files_archives
+				try (DestroyDialog rQueryMessage) catch ()
+			)
+		)
+		CreateDialog rQueryMessage width: 500 height: (112 + 20) modal: true
+		
+		return this.result
+	)	
+)
 
 struct GCModelSplitWrapper (
 	folder = "",
@@ -603,6 +659,7 @@ struct BlenderGLBWrapper (
 		
 		sysInfo.currentDir = curDir
 		
+		return preview		
 	),
 	fn init glb: "" name: "" = (
 		json = #()
@@ -645,9 +702,13 @@ struct WebGLPlayerWrapper (
 	currentPath = getFilenamePath (getThisScriptFilename()),
 	zippedPlayer = currentPath + "lowes-viewer.zip",
 	playerPath = currentPath + @"lowes-viewer\",
+	imgPath =  playerPath + @"images\",	
 	webserver = playerPath + "webserver.bat",
-	localhost = "",
-		
+	port = "33333",
+	localhost = "http://localhost:" + port,
+	urlModelPreview = localhost + "/?model=",
+	urlImgPreview = localhost + "/img-preview.html?id=",
+	
 	fn extractZip f o = (
         if (f == undefined or not doesFileExist f) do return false
         if (getFilenameType f != ".zip") do return false
@@ -665,34 +726,73 @@ struct WebGLPlayerWrapper (
 		sysInfo.currentDir = curDir
     ),
 
-	fn makeBrowserScreenshot s = (		
+	fn makeBrowserScreenshot f s = (
+		local ne = filenameFromPath f
+		local n = getFilenameFile f
+		local destGLB = playerPath + ne
+		
+		deleteFile destGLB
+		copyFile f destGLB
+		
 		curDir = sysInfo.currentDir
 		sysInfo.currentDir = currentPath	
 		
-		local args = localhost + ";" + s
-		local cmd2 = "chrome.bat \"" +  args + "\""
+		local args = (urlModelPreview + n) + ";" + s
+		local cmd2 = "chrome-screenshot.bat \"" +  args + "\""
 		hiddenDosCommand cmd2 exitcode:&exitcode	
 		
 		sysInfo.currentDir = curDir
 	),
 	
-	fn startWebServer f = (
+	fn previewModel f kill: "1" = (	
+		local ne = filenameFromPath f
+		local n = getFilenameFile f
+		local destGLB = playerPath + ne
+		
+		deleteFile destGLB
+		copyFile f destGLB
+		
+		curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath	
+		
+		local args = (urlModelPreview + n) + ";" + kill
+		local cmd = "chrome-preview.bat \"" +  args + "\""
+		hiddenDosCommand cmd exitcode:&exitcode	
+		
+		sysInfo.currentDir = curDir
+	),
+	
+	fn previewImg id kill: "1" type: #web = (				
+		if (type == #local) do (					
+			local ne = filenameFromPath id
+			local n = getFilenameFile id			
+			local destImg = imgPath + ne
+			
+			deleteFile destImg
+			copyFile id destImg
+			id = "/images/" + ne
+		)
+		
+		curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath	
+		
+		local args = urlImgPreview + id + ";" + kill
+		local cmd2 = "chrome-preview.bat \"" +  args + "\""
+		hiddenDosCommand cmd2 exitcode:&exitcode	
+		
+		sysInfo.currentDir = curDir
+	),
+	
+	fn startWebServer  = (
+		makeDir imgPath all: true
+		for i in (getFiles (imgPath + "*.*")) do deleteFile i
+		for i in (getFiles (playerPath + "*.glb")) do deleteFile i
+		
 		if (doesFileExist zippedPlayer and not doesFileExist webserver) do (
 			extractZip	zippedPlayer playerPath
 		)
 		
-		local port = "33333"
-		local ne = filenameFromPath f
-		local n = getFilenameFile f
-		local destGLB = playerPath + ne 
-		localhost = "http://localhost:" + port + "/?model=" + n
-		
 		if (not doesFileExist webserver) do return  messageBox "Can't find Lowes Player or Webserver, please reinstall script!" title: "Warining!"
-		
-		for i in (getFiles (playerPath + "*.glb")) do deleteFile i
-		
-		deleteFile destGLB
-		copyFile f destGLB
 		
 		curDir = sysInfo.currentDir
 		sysInfo.currentDir = playerPath	
@@ -703,9 +803,8 @@ struct WebGLPlayerWrapper (
 		hiddenDosCommand cmd exitcode:&exitcode	
 	),
 	
-	fn run f s = (
-		startWebServer f
-		makeBrowserScreenshot s
+	fn run = (
+		startWebServer()
 	)
 )
 
@@ -1597,7 +1696,8 @@ struct BatchGLBConverterWrapper (
 		this.j.addData this.json "scene" maxFileName
 		
 		-- Web Preview
-		w.run o preview
+		w.run()
+		w.makeBrowserScreenshot	o preview
 		
 		return o
 		-- Remove ktx2
@@ -2093,9 +2193,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				try (resetMaxFile #noprompt) catch ()
 				
-				local cmd = "rmdir /s /q \"" +  current.extractPath  + "\""
-				
+				local cmd = "rmdir /s /q \"" +  current.extractPath  + "\""				
 				HiddenDOSCommand cmd
+				
+				try (::_rBatchGCGLBConverter.updateLbx()) catch ()
 				
 				try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
 			)
@@ -2258,7 +2359,24 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			local ff = getFiles (dd + "*.zip")
 			
-			struct tmp (path, filename, name, glb, isGlbExist, type, ext, ini, extractPath, isChecked, isSplitted, scene)
+			struct tmp (
+				path, 
+				filename, 
+				name, 
+				glb, 
+				isGlbExist, 
+				type, 
+				ext, 
+				ini, 
+				extractPath, 
+				isChecked, 
+				isSplitted, 
+				scene,
+				glbName,
+				glbScreen,
+				blendName,
+				blendScreen
+			)
 			
 			local badPattern = #("*-BLEND", "*-FBX-OBJ", "*-MaxMerger", "*-MaxOriginal")
 			
@@ -2273,8 +2391,13 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				if (skip) do continue
 				
-				local glb = p + n + "-GLB.glb"										
+				local glb = p + n + "-GLB.glb"				
 				local ini = extractPath + "glb.ini"
+				
+				local glbName = n + "-GLB"
+				local glbScreen = p + glbName + ".png"
+				local blendName = n + "-BLEND"
+				local blendScreen = p + blendName + ".png"
 				
 				local type = (trimLeft ext ".") as name
 				local filename = f
@@ -2286,7 +2409,24 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				local scn = getScene ini
 				
-				append ::BATCH_GLB_CONVERTER_FILES (tmp path: p name: n filename: filename glb: glb isGlbExist: isGlbExist type: type ext: ext ini: ini extractPath: extractPath isChecked: isChecked isSplitted: isSplitted scene: scn)
+				append ::BATCH_GLB_CONVERTER_FILES (
+					tmp path: p \
+					name: n \
+					filename: filename \
+					glb: glb \
+					isGlbExist: isGlbExist \
+					type: type \
+					ext: ext \
+					ini: ini \
+					extractPath: extractPath \
+					isChecked: isChecked \
+					isSplitted: isSplitted \
+					scene: scn \
+					glbName: glbName \
+					glbScreen: glbScreen \
+					blendName: blendName \
+					blendScreen: blendScreen
+				)
 			)
 			
 			return ::BATCH_GLB_CONVERTER_FILES
@@ -2321,10 +2461,16 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		)
 	
 		fn updateLbx = (
+			local ss = getSelectedItems()
+			local selectedNames = for i in ss collect i.name
+			
 			getData()
 			
 			lbxList.items = #()
 			local o = #()
+			local c = 1
+			local sel = #{}
+			
 			for i in ::BATCH_GLB_CONVERTER_FILES do (
 				local glbStatus = ""
 				local checkStatus = ""
@@ -2338,10 +2484,14 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				if (i.isChecked) do checkStatus = "[Checked]"
 				if (i.isSplitted) do splitStatus = "[Split]"
 				append o (formatString "$1 $2 $3 $4" v: #(i.name, checkStatus, glbStatus, splitStatus))
+				if (findItem selectedNames i.name != 0) do append sel c
+				
+				c += 1
 			)
 			
 			lbxList.items = o
 			
+			lbxList.selection = sel
 			updateUI()
 			
 			SetQuietMode false
@@ -2430,7 +2580,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				r.file = f.scene
 				r.path = pp
-				r.name = getFilenameFile f.glb
+				r.name = f.glbName
 				r.ext = ext
 				r.del = undefined
 				r.opened = true
@@ -2441,7 +2591,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				-- Bender
 				if (cbxMakeBlend.checked) do (					
-					blendGLBMgr.init glb: glb name: (f.name + "-BLEND")
+					blendGLBMgr.init glb: glb name: f.blendName
 					blendGLBMgr.convertGLB2Blend()
 					blendGLBMgr.makeScreenshot()
 					blendGLBMgr.makeArchive()
@@ -2474,6 +2624,87 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			updateLbx()
 			
 			ShellLaunch p ""
+		)
+		
+		on lbxList rightClick do (
+			struct rc (
+				items = getSelectedItems(),
+				isSelected = items.count == 1,
+				atleastOneSelected = items.count > 0,
+				isQAEnabled = isSelected and items[1].isGlbExist,
+				w = WebGLPlayerWrapper(),
+				item = items[1],
+				
+				fn cleanupAllFiles = (
+					local q = (QueryDeleteFiles()).show()
+					if (q == #no) do return false
+					
+					local openedScene = undefined
+					local c = 0
+					
+					for i in items do (
+						if (maxFilePath == i.extractPath) do (
+							openedScene = maxFileName + " - " + i.name
+							continue
+						)
+						
+						if (q == #files_archives) do deleteFile i.filename
+						
+						local files = getFiles (i.path + i.name + "-*")
+						for ff in files do deleteFile ff
+						
+						deleteFile i.glb
+						local cmd = "rmdir /s /q \"" +  i.extractPath  + "\""
+						HiddenDOSCommand cmd						
+						
+						c += 1
+					)
+					
+					updateLbx()
+					
+					if (openedScene != undefined) then (
+						local m = (c as string) + "files deleted! One file ignored " + openedScene + " because scene is opened!"
+						messageBox m title: "Info!"
+					) else (
+						local m = (c as string) + " files deleted!"
+						messageBox m title: "Info!"
+					)
+				),
+				fn show = (
+					rcmenu rcListbox (
+						menuItem QA "QA GLB + Preview" enabled: this.isQAEnabled
+						menuItem openPreview "Open Site Preview" enabled: isSelected
+						separator sep1
+						menuItem removeAll "Remove All (+Generated Files)" enabled: atleastOneSelected
+						
+						on rcListbox open do (						
+						)
+						
+						on QA picked do (
+							local i = this.item
+							
+							w.startWebServer() 
+							w.previewModel i.glb
+							
+							w.previewImg i.name kill: "0"
+							w.previewImg i.glbScreen kill: "0" type: #local
+							if (cbxMakeBlend.checked) do w.previewImg i.blendScreen kill: "0" type: #local
+						)
+						
+						on openPreview picked do (
+							local i = this.item
+							
+							w.previewImg i.name kill: "0"
+						)
+						
+						on removeAll picked do cleanupAllFiles()
+					)
+					registerRightClickMenu rcListbox 
+					popUpMenu rcListbox 
+				)
+			)
+
+			(rc()).show()
 		)
 		
 		on lbxList doubleClicked v do (
