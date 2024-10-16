@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.0.9
+VERSION=1.1.0
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -50,7 +50,9 @@ Script for bulk conversion models to GLB=
 * Changed: Lot of refactoring=
 - BugFix: Not updated listbox after remove unpacked folder=
 
+[1.1.0]
 
++ Added: Copy Archive Path to context menu=
 
 [FILES]
 Install.mcr=
@@ -2674,6 +2676,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					rcmenu rcListbox (
 						menuItem QA "QA GLB + Preview" enabled: this.isQAEnabled
 						menuItem openPreview "Open Site Preview" enabled: isSelected
+						menuItem copyArchivePath "Copy Archive Path" enabled: isSelected
 						separator sep1
 						menuItem removeAll "Remove All (+Generated Files)" enabled: atleastOneSelected
 						
@@ -2698,6 +2701,15 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 						)
 						
 						on removeAll picked do cleanupAllFiles()
+						
+						on copyArchivePath picked do (
+							local i = this.item
+							
+							setClipboardText i.filename
+							setClipboardText i.filename
+							
+							messageBox "Copied!" title: "Success!"
+						)
 					)
 					registerRightClickMenu rcListbox 
 					popUpMenu rcListbox 
