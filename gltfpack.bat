@@ -19,8 +19,7 @@ for /f "tokens=1,2,3 delims=;" %%i in (%input%) do (
 gltfpack.exe -noq -i "%gltf%" -o "%glb%"
 
 for %%a in ("%gltf%") do set "folder=%%~dpa"
-if not "%folder%"=="" (
-	rmdir /s /q "%folder%"
-)
+timeout /t 2 /nobreak > nul & rmdir /s /q "%folder%"
+
 
 

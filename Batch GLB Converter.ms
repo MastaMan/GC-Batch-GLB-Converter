@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.1.0
+VERSION=1.1.1
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -51,8 +51,18 @@ Script for bulk conversion models to GLB=
 - BugFix: Not updated listbox after remove unpacked folder=
 
 [1.1.0]
-
 + Added: Copy Archive Path to context menu=
+
+[1.1.1]
++ Added: Rendered custom HDRI for player=
++ Added: Downloader=
++ Added: Model Statuses=
++ Added: New buttons and workflow structure in UI=
+* Changed: Simplified inteface=
+* Changed: New web player=
+* Changed: Fixes and stabilization=
+- Removed: Split files=
+- BugFix: QA=
 
 [FILES]
 Install.mcr=
@@ -65,7 +75,8 @@ vdenoise.xml=
 normalmap.exe=
 xnormal.bat=
 xnormal.xml=
-lowes-viewer.zip=
+lowes-viewer.zip=deleted
+model-viewer.zip=
 chrome-screenshot.bat=
 chrome-preview.bat=
 chrome.bat=deleted
@@ -76,6 +87,8 @@ blender-import-glb.py=
 blender-bg-import.bat=
 blender-gen-ini.py=
 blender-bg-run.bat=
+download.bat=
+get-max-render.bat=
 
 [SCRIPT]
 */
@@ -85,6 +98,34 @@ blender-bg-run.bat=
 	Transluency -> Transmission
 
 */
+
+struct getMaxDataWrapper (
+	currentPath = getFileNamePath (getThisScriptFileName()),
+		
+	fn ver f = (
+		local v = try ((getMaxFileVersionData f)[1]) catch ((maxVersion())[1])
+		v = 2000 + ((v / 1000) - 2)
+		return v as string
+	),
+	
+	fn rend f = (
+		local ini = f + ".ini"		
+		local args = f + ";" + ini		
+		local cmd = "get-max-render.bat \"" +  args + "\""
+		local curDir = sysInfo.currentDir
+		
+		sysInfo.currentDir = currentPath		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false		
+		sysInfo.currentDir = curDir
+		
+		local r = getINISetting ini "index" "render"
+		deleteFile ini
+		
+		if (r == "") do r = "Scanline"
+		
+		return r
+	)
+)
 
 struct QueryDeleteFiles (
 	rQueryMessage = undefined,
@@ -126,187 +167,6 @@ struct QueryDeleteFiles (
 		
 		return this.result
 	)	
-)
-
-struct GCModelSplitWrapper (
-	folder = "",
-	id = "",
-	root = "",
-	ptrnGC = #("GC-*-Corona.max", "GC-*-VRay.max"),
-	ptrnExport = #("*.fbx", "*.obj", "*.mtl", "*.mat"),
-	postfixOriginal = "-MaxOriginal",
-	postfixMerger = "-MaxMerger",
-	postfixExport = "-FBX-OBJ",
-	currentPath = getFileNamePath (getThisScriptFileName()),
-	
-	fn archivate n o = (
-		if (not doesDirectoryExist o) do return false
-		
-		local args = n + ";" + o
-		args = substituteString args "/" @"\"
-		
-		local cmd = "archivate.bat \"" +  args + "\""
-		
-		local curDir = sysInfo.currentDir
-		sysInfo.currentDir = currentPath
-		
-		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
-		
-		sysInfo.currentDir = curDir
-	),
-	fn isMatch s pattern: #() = (
-		for p in pattern do (
-			if (MatchPattern s pattern: p ignoreCase: true) do return true
-		)
-		
-		return false
-	),
-	fn isSplitted = (
-		local s = true
-		local postfixes = #(postfixOriginal, postfixMerger, postfixExport)
-		for p in postfixes do (
-			local f = root + id + postfixExport + ".zip"
-			if (not doesFileExist f) do s = false
-		)
-		
-		return true
-	),
-	fn trim s tag: "- "= (
-		return trimLeft (trimRight s tag) tag
-	),
-	fn getId = (
-		local a = filterString folder @"\"
-		return try (a[a.count]) catch ("0000")
-	),
-	fn getRoot = (	
-		return substring folder 1 (folder.count - id.count - 1)
-	),
-	fn getFilesRecursive r pattern: "*.*" = (
-        local dd = getDirectories (r + "/*")
-        local ff = getFiles (r + "/" + pattern)
-        for i in dd do join ff (getFilesRecursive i pattern: pattern)
-        
-        return ff
-    ),
-	fn getOriginalFiles = (
-		local files = getFiles (folder + "*.max")
-		local o = #()
-		
-		for f in files do (
-			local n = filenameFromPath f
-			if (isMatch n pattern: ptrnGC) do continue
-			append o f
-		)
-		
-		return o
-	),	
-	fn getGCFiles = (
-		local files = getFiles (folder + "*.max")
-		local o = #()
-		
-		for f in files do (
-			local n = filenameFromPath f
-			if (isMatch n pattern: ptrnGC) do append o f			
-		)
-		
-		return o
-	),
-	fn getOrignalName f = (
-		local n = filenameFromPath f
-		n = substituteString n "Author-" ""
-		n = substituteString n "Original-Scene-" ""
-		n = substituteString n "---" "-"
-		n = substituteString n "--" "-"
-		n = trim n
-		return n
-	),
-	fn getExportName f = (
-		local n = filenameFromPath f
-		n = substituteString n "-fbx" ""
-		n = substituteString n "-obj" ""
-		n = trim n
-		return n
-	),
-	fn getMergerName f = (
-		local n = filenameFromPath f
-		n = substituteString n "GC-repack-" ""
-		n = substituteString n "GC-Repack-" ""
-		n = substituteString n "GC-" ""
-		n = substituteString n "---" "-"
-		n = substituteString n "--" "-"
-		n = trim n
-		return n
-	),
-	fn copyMaps p = (
-		local maps = folder + @"maps\*"
-		local dest = p + @"maps\"
-		makeDir dest all: true
-		local cmd = "xcopy \"" + maps + "\" \"" + dest + "\" /E /I /C /Y"
-		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
-	),		
-	fn createMaxOriginal = (
-		local n = id + postfixOriginal
-		local p = root + n + @"\"
-		local zip = root + n + ".zip"
-		local files = getOriginalFiles()
-		
-		makeDir p all: true
-		
-		for f in files do (
-			local origName = getOrignalName f
-			copyFile f (p + origName)
-		)
-		
-		copyMaps p
-		
-		archivate zip p
-	),
-	fn createMaxMerger = (
-		local n = id + postfixMerger
-		local p = root + n + @"\"
-		local zip = root + n + ".zip"
-		local files = getGCFiles()
-		
-		makeDir p all: true
-		
-		for f in files do (
-			local mergerName = "GC-Repack-" + (getMergerName f)
-			copyFile f (p + mergerName)
-		)
-		
-		copyMaps p
-		
-		archivate zip p
-	),
-	fn createFbxObj = (
-		local tmp = getFilesRecursive folder				
-		local n = id + postfixExport
-		local p = root + n + @"\"
-		local zip = root + n + ".zip"
-		local files = for f in tmp where (isMatch f pattern: ptrnExport) collect f
-		
-		for f in files do (
-			local exportName = getExportName f
-			
-			makeDir p all: true
-			
-			copyFile f (p + exportName)
-		)
-		
-		copyMaps p
-		
-		archivate zip p
-	),	
-	fn init p = (
-		folder = p
-		id = getId()
-		root = getRoot()
-		
-		local files = getFiles (folder + "*.max")
-		if (files.count == 0) do return #error_no_max_files
-		
-		return #inited
-	)
 )
 
 struct dateTime (
@@ -385,6 +245,7 @@ struct JsonWrapper (
 		v = case classOf v of (
 			undefined: ""
 			UndefinedClass: ""
+			Array: v
 			default: v as string
 		)
 		
@@ -457,6 +318,275 @@ struct JsonWrapper (
 		writeFileUTF8 (fname) b
 	)
 )
+
+struct GCModelSplitWrapper (
+	folder = "",
+	id = "",
+	root = "",
+	ptrnGC = #("GC-*-Corona.max", "GC-*-VRay.max"),
+	ptrnExport = #("*.fbx", "*.obj", "*.mtl", "*.mat"),
+	postfixOriginal = "-MaxOriginal",
+	postfixMerger = "-MaxMerger",
+	postfixExport = "-FBX-OBJ",
+	currentPath = getFileNamePath (getThisScriptFileName()),
+	maxDataMgr = getMaxDataWrapper(),
+	j = JsonWrapper(),
+	data = #(),
+	
+	fn archivate n o = (
+		if (not doesDirectoryExist o) do return false
+		
+		local args = n + ";" + o
+		args = substituteString args "/" @"\"
+		
+		local cmd = "archivate.bat \"" +  args + "\""
+		
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath
+		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+		
+		sysInfo.currentDir = curDir
+	),
+	fn isMatch s pattern: #() = (
+		for p in pattern do (
+			if (MatchPattern s pattern: p ignoreCase: true) do return true
+		)
+		
+		return false
+	),	
+	fn trim s tag: "- "= (
+		return trimLeft (trimRight s tag) tag
+	),
+	fn getId = (
+		local a = filterString folder @"\"
+		return try (a[a.count]) catch ("0000")
+	),
+	fn getRoot = (
+		local d = substring folder 1 (folder.count - id.count - 1)		
+		d = d + @"Processed\"
+		makeDir d all: true
+		return d
+	),
+	fn isSplitted = (
+		local s = true
+		local postfixes = #(postfixOriginal, postfixMerger, postfixExport)
+		for p in postfixes do (
+			local f = root + id + p + ".zip"
+			if (not doesFileExist f) do s = false
+		)
+		
+		return s
+	),
+	fn writeIniSplitStatus = (
+		makeDir root all: true
+		local ini = root + id + ".ini"
+		local postfixes = #(postfixOriginal, postfixMerger, postfixExport)
+		for p in postfixes do (
+			local f = root + id + p + ".zip"
+			local status = if (doesFileExist f) then "Approve" else "Error"
+			setINISetting ini "FILES" (trimLeft p "-") status
+		)
+	),
+	fn getFilesRecursive r pattern: "*.*" = (
+        local dd = getDirectories (r + "/*")
+        local ff = getFiles (r + "/" + pattern)
+        for i in dd do join ff (getFilesRecursive i pattern: pattern)
+        
+        return ff
+    ),
+	fn getOriginalFiles = (
+		local files = getFiles (folder + "*.max")
+		local o = #()
+		
+		for f in files do (
+			local n = filenameFromPath f
+			if (isMatch n pattern: ptrnGC) do continue
+			append o f
+		)
+		
+		return o
+	),	
+	fn getGCFiles = (
+		local files = getFiles (folder + "*.max")
+		local o = #()
+		
+		for f in files do (
+			local n = filenameFromPath f
+			if (isMatch n pattern: ptrnGC) do append o f			
+		)
+		
+		return o
+	),
+	fn getOrignalName f = (
+		local n = filenameFromPath f
+		n = substituteString n "Author-" ""
+		n = substituteString n "Original-Scene-" ""
+		n = substituteString n "---" "-"
+		n = substituteString n "--" "-"
+		n = trim n
+		return n
+	),
+	fn getExportName f = (
+		local n = filenameFromPath f
+		n = substituteString n "-fbx" ""
+		n = substituteString n "-obj" ""
+		n = trim n
+		return n
+	),
+	fn getMergerName f = (
+		local n = filenameFromPath f
+		n = substituteString n "GC-repack-" ""
+		n = substituteString n "GC-Repack-" ""
+		n = substituteString n "GC-" ""
+		n = substituteString n "---" "-"
+		n = substituteString n "--" "-"
+		n = trim n
+		return n
+	),
+	fn copyMaps p = (
+		local maps = folder + @"maps\*"
+		local dest = p + @"maps\"
+		makeDir dest all: true
+		local cmd = "xcopy \"" + maps + "\" \"" + dest + "\" /E /I /C /Y"
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+	),	
+	fn implode a tag: ","= (
+		local o = ""
+		for i in 1 to a.count do (
+			o += a[i]
+			if (i != a.count) do o += tag
+		)
+		return o
+	),
+	fn writeJsonVersionsAndRenders n files = (
+		-- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		data = #()
+		local jj = root + n + ".json"
+		local jsonVersionsAndRenders = #()
+		for f in files do (
+			local v = maxDataMgr.ver f
+			local r = maxDataMgr.rend f
+			
+			append jsonVersionsAndRenders #(#(v, r))
+		)
+		
+		j.addData data "versionsAndRenders" jsonVersionsAndRenders
+		
+		j.writeJson jj data
+	),	
+	fn writeIniVersionsAndRenders n files = (
+		local ini = root + n + ".ini"
+		local versions = #()
+		local renders = #()
+		
+		for f in files do (
+			local v = maxDataMgr.ver f
+			local r = maxDataMgr.rend f
+		
+			local i = findItem versions v
+			if (i != 0) then (
+				appendIfUnique renders[i] r
+			) else (
+				append versions v
+				append renders #(r)
+			)
+		)
+		
+		for i in 1 to versions.count do (
+			local v = versions[i]
+			local r = implode renders[i]
+			setINISetting ini "versionsAndRenders" v r
+		)
+	),	
+	fn createMaxOriginal = (
+		local n = id + postfixOriginal
+		local p = root + n + @"\"
+		local zip = root + n + ".zip"		
+		local files = getOriginalFiles()
+		
+		makeDir p all: true
+		
+		for f in files do (
+			local origName = getOrignalName f
+			copyFile f (p + origName)
+			
+			local v = maxDataMgr.ver f
+			local r = maxDataMgr.rend f
+		)
+		
+		copyMaps p		
+		archivate zip p		
+		writeIniVersionsAndRenders n files
+		writeJsonVersionsAndRenders n files
+		
+	),	
+	fn createMaxMerger = (
+		local n = id + postfixMerger
+		local p = root + n + @"\"
+		local zip = root + n + ".zip"
+		local files = getGCFiles()
+		
+		makeDir p all: true
+		
+		for f in files do (
+			local mergerName = "GC-Repack-" + (getMergerName f)
+			copyFile f (p + mergerName)
+		)
+		
+		copyMaps p		
+		archivate zip p		
+		writeIniVersionsAndRenders n files
+	),
+	fn createFbxObj = (
+		local tmp = getFilesRecursive folder				
+		local n = id + postfixExport
+		local p = root + n + @"\"
+		local zip = root + n + ".zip"
+		local ini = root + n + ".ini"
+		local files = for f in tmp where (isMatch f pattern: ptrnExport) collect f
+		
+		for f in files do (
+			local exportName = getExportName f
+			local t = trimLeft (getFilenameType f) "."
+			
+			makeDir p all: true
+			
+			copyFile f (p + exportName)
+			
+			setINISetting ini "EXPORT" t "true"
+		)
+		
+		copyMaps p
+		
+		archivate zip p
+	),	
+	fn init p = (
+		folder = p
+		id = getId()
+		root = getRoot()
+		
+		local files = getFiles (folder + "*.max")
+		if (files.count == 0) do return #error_no_max_files
+		
+		return #inited
+	)
+)
+
+/*
+	fn splitFiles = (
+		local splitterMgr = GCModelSplitWrapper()
+		splitterMgr.init maxFilePath
+		splitterMgr.createMaxOriginal()
+		splitterMgr.createFbxObj()
+		splitterMgr.createMaxMerger()
+		
+		local s = splitterMgr.isSplitted()
+		splitterMgr.writeIniSplitStatus()
+		
+		return s
+	)
+*/
 
 struct BlenderGLBWrapper (
 	currentPath = getFileNamePath (getThisScriptFileName()),
@@ -702,8 +832,8 @@ struct BlenderGLBWrapper (
 
 struct WebGLPlayerWrapper (
 	currentPath = getFilenamePath (getThisScriptFilename()),
-	zippedPlayer = currentPath + "lowes-viewer.zip",
-	playerPath = currentPath + @"lowes-viewer\",
+	zippedPlayer = currentPath + "model-viewer.zip",
+	playerPath = currentPath + @"model-viewer\",
 	imgPath =  playerPath + @"images\",	
 	webserver = playerPath + "webserver.bat",
 	port = "33333",
@@ -739,7 +869,7 @@ struct WebGLPlayerWrapper (
 		curDir = sysInfo.currentDir
 		sysInfo.currentDir = currentPath	
 		
-		local args = (urlModelPreview + n) + ";" + s
+		local args = (urlModelPreview + ne) + ";" + s
 		local cmd2 = "chrome-screenshot.bat \"" +  args + "\""
 		hiddenDosCommand cmd2 exitcode:&exitcode	
 		
@@ -757,7 +887,7 @@ struct WebGLPlayerWrapper (
 		curDir = sysInfo.currentDir
 		sysInfo.currentDir = currentPath	
 		
-		local args = (urlModelPreview + n) + ";" + kill
+		local args = (urlModelPreview + ne) + ";" + kill
 		local cmd = "chrome-preview.bat \"" +  args + "\""
 		hiddenDosCommand cmd exitcode:&exitcode	
 		
@@ -790,11 +920,11 @@ struct WebGLPlayerWrapper (
 		for i in (getFiles (imgPath + "*.*")) do deleteFile i
 		for i in (getFiles (playerPath + "*.glb")) do deleteFile i
 		
-		if (doesFileExist zippedPlayer and not doesFileExist webserver) do (
+		if (doesFileExist zippedPlayer /*and not doesFileExist webserver*/) do (
 			extractZip	zippedPlayer playerPath
 		)
 		
-		if (not doesFileExist webserver) do return  messageBox "Can't find Lowes Player or Webserver, please reinstall script!" title: "Warining!"
+		if (not doesFileExist webserver) do return  messageBox "Can't find Model Viwer Player or Webserver, please reinstall script!" title: "Warining!"
 		
 		curDir = sysInfo.currentDir
 		sysInfo.currentDir = playerPath	
@@ -807,6 +937,164 @@ struct WebGLPlayerWrapper (
 	
 	fn run = (
 		startWebServer()
+	)
+)
+
+struct GCDownloaderWrapper (
+	apiKey = "prodJq8PsdWdf34ffFtoMa698aidf22",
+	apiUrl = "https://greatcatalog.net/api/get-version-for-conversion.php?key=",
+	currentPath = getFileNamePath (getThisScriptFileName()),
+	url = apiUrl + apiKey,
+	data = "",
+	downloadDir = "",
+	fn trim s tag: " " = (
+		return trimLeft (trimRight s tag) tag
+	),
+	fn download u f = (
+		local args = u + ";" + f
+		
+		local cmd = "download.bat \"" +  args + "\""
+		
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath
+		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+		
+		sysInfo.currentDir = curDir
+	),
+	fn readResponce r = (
+		if (r == undefined) do return undefined
+		
+		local s = r.GetResponseStream()
+		local sr = dotNetObject "System.IO.StreamReader" s
+		return sr.ReadToEnd()
+	),
+	fn getRequest url timeoutMin: 180 = (
+		local w = (dotNetClass "System.Net.WebRequest").Create (url  + "&time=" + (timestamp() as string))
+		w.Timeout = timeoutMin * 60 * 1000
+		
+		try (	
+			local spm = dotNetClass "System.Net.ServicePointManager"
+			spm.SecurityProtocol = spm.SecurityProtocol.TLS12				
+			
+			w.Method = "GET"		
+			w.UserAgent = "Mozilla/5.0"
+			
+			local r = w.GetResponse()
+			
+			return (readResponce r)
+		) catch ()
+			
+		return undefined
+	),
+	fn fileSize f = (
+		return try ((getFileSize f) as float) catch (0.0)
+	),
+	fn isValidFile f = (
+		if (not doesFileExist f) do return false
+		local size = fileSize f
+		if (size == 0.0) do return false
+		if (size > 2000) do return true
+		local ss = (dotnetClass "System.IO.File").ReadAllLines f
+		return findString ss[1] ("xml version=") == undefined
+	),
+	fn getFilesName ff = (
+		return for i in ff collect (getFilenameFile f)
+	),
+	fn run = (
+		this.data = this.getRequest this.url
+
+		if (this.data == undefined) do return messageBox "Unable to retrieve data from the server!" title: "Error!"
+		local dd = FilterString this.data "\n"
+		local errors = #()
+		local haystack = #()
+		
+		if (dd.count == 0) do return messageBox "The list of files from the server came empty!" title: "Notify!"
+		
+		for i in 1 to dd.count do (
+			local d = FilterString  dd[i] "|"
+			local n = d[1]
+			local u = d[2]
+			
+			if (n == undefined or u == undefined) do (
+				appendIfUnique errors ("Can't parse the string " + dd[i])
+				continue
+			)
+			
+			append haystack #(n, u)
+		)
+		
+		if (errors.count > 0) do (
+			local m = (errors.count as string) + " errors found!\nDo you want to continue?\n\n"
+			for i in errors do m += i + "\n"
+			
+			local q = queryBox m title: "Notify!"
+			if (not q) do return false
+		)
+		
+		local errorsFiles = #()
+		local successFiles = #()
+		local existFiles = #()
+		
+		progressStart "Downloading..."
+		escapeEnable = true
+		clearListener()
+		
+		for i in 1 to haystack.count do (
+			local h = haystack[i]
+			local f = this.downloadDir + (this.trim h[1]) + ".zip"
+			local u = this.trim h[2]
+			
+			if (doesFileExist f) do (
+				appendIfUnique existFiles f
+				appendIfUnique successFiles f
+				progressUpdate (100.0 * i / haystack.count)
+				windows.processPostedMessages() 
+				continue
+			)
+			
+			if (getProgressCancel() or keyboard.escPressed) do return false
+			
+			this.download u f
+			
+			if (getProgressCancel() or keyboard.escPressed) do return false
+			
+			if (not this.isValidFile f) then (
+				appendIfUnique errorsFiles f
+				deleteFile f
+			) else (
+				appendIfUnique successFiles f
+			)
+			
+			progressUpdate (100.0 * i / haystack.count)
+			windows.processPostedMessages() 
+		)
+		
+		progressEnd()
+		
+		if (errorsFiles.count > 0 and successFiles.count == 0) do (
+			local m = "Files were not downloaded!"
+			return messageBox m title: "Error!"
+		)
+		
+		if (errorsFiles.count > 0 and successFiles.count > 0) do (
+			local m = (errorsFiles.count as string) + " files were not downloaded! Try downloading again!"
+			return messageBox m title: "Error!"
+		)
+		
+		if (haystack.count != successFiles.count) do (
+			local m = "Attention, not all files from the current queue have been downloaded!"
+			return messageBox m title: "Error!"
+		)
+
+		if (haystack.count == existFiles.count) do (
+			local m = "All files in this queue have been downloaded!"
+			return messageBox m title: "Success!"
+		)
+	),
+	fn init downloadDir = (
+		makeDir downloadDir all: true
+		this.downloadDir = downloadDir
 	)
 )
 
@@ -970,6 +1258,15 @@ struct BatchGLBConverterWrapper (
 		local p = this.outPath + n + @"\_glb_cache\"
 		makeDir p all: true
 		return p
+	),
+	
+	fn getUnusedDirs = (
+		local s = this.getSceneName()		
+		local dd = #()
+		
+		append dd (this.outPath + s + @"\")
+		
+		return dd
 	),
 	
 	fn generateCacheFilename type: #jpg = (
@@ -1170,7 +1467,7 @@ struct BatchGLBConverterWrapper (
 		for t in this.texturesQueue do (
 			if (classOf t[1] == Bitmaptexture) then (
 				local b = cacheBitmap t[1]			
-				for i in t where i != undefined do replaceInstances i b
+				for i in t where i != undefined and b != undefined do replaceInstances i b
 			) else if (t[1] != undefined) then (
 				this.renderTargetMap t[1] isReplace: true type: #jpg
 			)				
@@ -1270,7 +1567,7 @@ struct BatchGLBConverterWrapper (
 	
 	fn clampColor c = (
 		if (c == black) do return color 4 4 4
-		if (c == white) do return 251 251 251
+		if (c == white) do return color 251 251 251
 		return c
 	),
 	
@@ -1425,17 +1722,29 @@ struct BatchGLBConverterWrapper (
 	),
 	
 	fn autoUnwrap obj = (
-		select obj
-		modPanel.addModToSelection (Unwrap_UVW ()) ui:on
-		subobjectLevel = 3
-		local uvw =  obj.modifiers[1]
-		uvw.setMapChannel 2
-		uvw.setApplyToWholeObject true
-		ss = #{}
-		for i in 1 to uvw.numberPolygons() do append ss i
-		uvw.selectPolygons ss
-		uvw.flattenMap 50 #([1,0,0], [-1,0,0], [0,1,0], [0,-1,0], [0,0,1], [0,0,-1]) 0.0085 true 2 true true
-		convertToMesh obj     
+		with redraw off with undo off (
+			select obj
+			max hierarchy mode
+			modPanel.addModToSelection (Unwrap_UVW ()) ui:on
+			subobjectLevel = 3
+			local uvw =  obj.modifiers[1]
+			uvw.setMapChannel 2
+			uvw.setApplyToWholeObject true
+			max modify mode
+			subobjectLevel = 3
+			max select all
+				
+			/*ss = #{}
+			for i in 1 to uvw.numberPolygons() do append ss i
+			uvw.selectPolygons ss*/
+				
+			uvw.flattenMap 50 #([1,0,0], [-1,0,0], [0,1,0], [0,-1,0], [0,0,1], [0,0,-1]) 0.0085 true 2 true true
+			uvw.unwrap4.setThickOpenEdges false
+			
+			max select none
+			subobjectLevel = 0
+			convertToMesh obj  
+		)				
 	),
 	
 	fn attachObjectsByMaterials = (
@@ -1660,6 +1969,11 @@ struct BatchGLBConverterWrapper (
 		)
 	),
 	
+	fn rmDir d = (
+		local cmd = "timeout /t 5 /nobreak & rmdir /S /Q \"" + d + "\""
+		HiddenDOSCommand cmd donotwait: true
+	),
+	
 	fn packGLTF i o = (
 		local args = i + ";" + o
 		args = substituteString args "/" @"\"
@@ -1671,7 +1985,9 @@ struct BatchGLBConverterWrapper (
 		
 		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
 		
-		sysInfo.currentDir = curDir	
+		sysInfo.currentDir = curDir
+		
+		for p in this.getUnusedDirs() do rmDir p
 	),
 	
 	fn exportGLB p n: undefined = (
@@ -1710,12 +2026,6 @@ struct BatchGLBConverterWrapper (
 		try (delete lights) catch ()
 		try (delete cameras) catch ()
 	),
-	
-	fn rmDir d = (
-		local cmd = "rmdir /S /Q \"" + d + "\""
-		HiddenDOSCommand cmd
-	),
-	
 	
 	fn getFileMb f = (
 		if (not doesFileExist f) do return 0.0
@@ -1970,6 +2280,7 @@ struct '@' (
 
 global '*' = '@'()	
 global _rBatchGCGLBConverter = undefined
+global _rBatchGCGLBConverterSettings = undefined
 if (::_rBatchGCGLBChecker == undefined) do (
 	global _rBatchGCGLBChecker = undefined
 )
@@ -1979,7 +2290,7 @@ try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
 
 if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 
-	global floaterBatchGLBConverter = newRolloutFloater "GLB Converter" 300 810
+	global floaterBatchGLBConverter = newRolloutFloater "GLB Converter" 300 820
 
 	fn checkArchiveForErrors = (
 		try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
@@ -2120,7 +2431,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				splitterMgr.createMaxMerger()
 				
 				local s = splitterMgr.isSplitted()
-				setter "splitted" s
+				splitterMgr.writeIniSplitStatus()
 				
 				return s
 			)
@@ -2149,7 +2460,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					local r = ::API_BATCH_GLB_CONVERTER.load current.filename
 					
 					if (r.opened) do (
-						setter "scene" r.maxName												
+						setter "scene" r.maxName
 					)
 					
 					isErrorOpen = not r.opened
@@ -2162,9 +2473,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				if (isErrorOpen) do messageBox "Error while opening scene!\nTry to clear extracted files and repeat againg!" title: "Error!"
 				
 				-- If not splitted and not checked yet
-				if (getter "checked" != "true" and getter "splitted" != "true") do (
+				/*if (getter "checked" != "true" and getter "splitted" != "true") do (
 					splitFiles()
-				)
+				)*/
 				
 				max tool zoomextents
 				max tool maximize
@@ -2175,6 +2486,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				loadChecks()
 				
 				btnSave.enabled = true
+				
+				try (::_rBatchGCGLBConverter.updateLbx()) catch ()
 			)
 			
 			on _rBatchGCGLBChecker moved p do (
@@ -2197,6 +2510,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				local cmd = "rmdir /s /q \"" +  current.extractPath  + "\""				
 				HiddenDOSCommand cmd
+				
+				try (::_rBatchGCGLBConverter.delApproveStatus current.id current.glb) catch ()
+				try (::_rBatchGCGLBConverter.delApproveStatus current.id current.blnd) catch ()
 				
 				try (::_rBatchGCGLBConverter.updateLbx()) catch ()
 				
@@ -2248,59 +2564,39 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			button btnDeselect "Deselect" align: #center width: 100
 		)
 		
-		group "Check for Correctness" (
-			button btnCheckArchive "Check Archive" width: 260 height: 36
+		group "1. Download from DB" (
+			button btnDownload "Download Models" height: 24 width: 260
 		)
 		
-		group "AO Settings" (
-			checkbox cbxUseCoronaAO "Use Corona AO"
-			
-			spinner spnAOPasses "Passes: " range: [1, 9999, 100] type: #integer fieldwidth: 50 align: #right across: 2 offset: [-15, 0]
-			spinner spnAOSize "Size (cm): " range: [0.01, 9999.0, 5.0] type: #float fieldwidth: 50 
-			spinner spnAOResolution "Resolution:"  range: [512, 8192, 1024] scale: 512 type: #integer align: #right fieldwidth: 50 across: 2  offset: [-15, 0]
-			checkbox cbxAODenoise "Use VRay Denoiser" offset: [15, 0]
+		group "2. Moderate Archives" (
+			button btnCheckArchive "Check Archive" width: 260 height: 24
 		)
 		
-		group "xNormal AO" (
-			checkbox cbxUseXNormalAO "Use xNormal AO"
-			spinner spnAOXNormalResolution "Resolution:"  range: [512, 8192, 1024] scale: 512 type: #integer align: #right fieldwidth: 50 across: 2  offset: [-15, 0]
-			checkbox cbxAODenoiseXNormal "Use VRay Denoiser" align: #left offset: [15, 0]
+		group "3. Export to Other Formats" (
+			button btnBatchExport "Batch Export Selected (0)" height: 24 width: 260
 		)
 		
-		group "Additional Formats" (
-			checkbox cbxMakeBlend "Blender (.blend)"	
+		group "4. Quality Assurance" (
+			button btnQA "QA GLB + Preview" height: 24 width: 260
+			button btnStatusApprove "Status: Approve" across: 2 height: 24 width: 125 align: #left
+			button btnStatusSkip "Status: Skip" height: 24 width: 125 align: #right
 		)
 		
-		button btnBatchExport "Batch Export (0)" height: 36 width: 260 offset: [0, 10]
+		group "5. Upload to DB" (
+			button btnUpload "Upload All Approved Models " height: 24 width: 260
+		)
 		
 		global BATCH_GLB_CONVERTER_FILES = #()
+		global BATCH_GLB_PROCESSED_DIR = ""
 		
 		fn loadSettings = (
 			local dd = '*'.get "tnt_path"
 			edtInputPath.text = dd
 			
-			local p = '*'.get "spnAOPasses" type: #int
-			spnAOPasses.value = if (p != 0) then p else 100
-			
-			local s = '*'.get "spnAOSize" type: #int
-			spnAOSize.value = if (s != 0) then s else 5.0
-			
-			local r = '*'.get "spnAOResolution" type: #int
-			spnAOResolution.value = if (r != 0) then r else 1024
-			
-			local r2 = '*'.get "spnAOXNormalResolution" type: #int
-			spnAOXNormalResolution.value = if (r2 != 0) then r2 else 1024
-			
-			cbxAODenoise.checked = '*'.get "cbxAODenoise" type: #bool_false
-			cbxUseCoronaAO.checked = '*'.get "cbxUseCoronaAO" type: #bool_false
-			cbxUseXNormalAO.checked = '*'.get "cbxUseXNormalAO" type: #bool_true
-			cbxAODenoiseXNormal.checked = '*'.get "cbxAODenoiseXNormal" type: #bool_false
-			cbxMakeBlend.checked = '*'.get "cbxMakeBlend" type: #bool_false
-			
-			if (cbxUseXNormalAO.checked) do (
-				cbxUseCoronaAO.checked = false
-				'*'.add  "cbxUseCoronaAO" false
-			)
+			if (dd != "") do (
+				::BATCH_GLB_PROCESSED_DIR = dd + @"Processed\"
+				makeDir ::BATCH_GLB_PROCESSED_DIR all: true
+			)					
 		)
 		
 		fn formatString s v: #() tag: "$" = (
@@ -2315,6 +2611,20 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		fn getSelectedItems = (
 			local ss = lbxList.selection as array
 			return for i in ss collect ::BATCH_GLB_CONVERTER_FILES[i]
+		)
+		
+		fn startQA = (
+			local items = getSelectedItems()
+			local i = items[1]
+			local w = WebGLPlayerWrapper()
+			if (i == undefined) do return false
+			
+			w.startWebServer() 
+			w.previewModel i.glb
+			
+			w.previewImg i.name kill: "0"
+			w.previewImg i.glbScreen kill: "0" type: #local
+			if (::_rBatchGCGLBConverterSettings.cbxMakeBlend.checked) do w.previewImg i.blendScreen kill: "0" type: #local
 		)
 		
 		fn getOpenFiles = (
@@ -2351,8 +2661,42 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			return (getINISetting ini "index" "checked") == "true"
 		)
 		
-		fn getSplitted ini = (
-			return (getINISetting ini "index" "splitted") == "true"
+		fn getMask f = (
+			f = getFilenameFile f
+			f = trimLeft f "0123456789-"
+			return f
+		)
+		
+		fn getApproveStatus id f = (
+			local n = getMask f
+			local ini = ::BATCH_GLB_PROCESSED_DIR + id + ".ini"
+			
+			return getINISetting ini "FILES" n
+		)
+		
+		fn delApproveStatus id f = (
+			local ini = ::BATCH_GLB_PROCESSED_DIR + id + ".ini"
+			local n = getMask f
+			return delINISetting ini "FILES" n
+		)
+		
+		fn setApproveStatus id f status: #skip = (
+			if (status != #skip and not doesFileExist f) do status = #error
+			
+			local os = getApproveStatus id f
+			
+			local ini = ::BATCH_GLB_PROCESSED_DIR + id + ".ini"
+			local n = getMask f
+			local s = case status of (
+				#skip: "Skip"
+				#error: "Error"
+				#approve: "Approve"
+				default: ""
+			)
+			
+			if (os == s) do s = ""
+			
+			setINISetting ini "FILES" n s
 		)
 		
 		fn getData = (
@@ -2361,79 +2705,103 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			local ff = getFiles (dd + "*.zip")
 			
+			--local splitterMgr = GCModelSplitWrapper()
+
 			struct tmp (
+				id,
 				path, 
+				outPath, 
 				filename, 
 				name, 
+				blnd, 
 				glb, 
 				isGlbExist, 
+				isBlndExist, 
 				type, 
 				ext, 
 				ini, 
 				extractPath, 
 				isChecked, 
-				isSplitted, 
+				--isSplitted, 
 				scene,
 				glbName,
 				glbScreen,
 				blendName,
-				blendScreen
+				blendScreen,
+				approve,
+				isApprove,
+				iniProcessed
 			)
 			
 			local badPattern = #("*-BLEND", "*-FBX-OBJ", "*-MaxMerger", "*-MaxOriginal")
 			
 			for f in ff do (
 				local p = getFilenamePath f
+				local outPath = p + @"Processed\"
 				local n = getFilenameFile f
+				local id = n
 				local ext = getFilenameType f
 				local extractPath = p + n + @"\"
+				--splitterMgr.init extractPath
 				
 				local skip = false
 				for pt in badPattern where MatchPattern n pattern: pt do skip = true
 				
 				if (skip) do continue
 				
-				local glb = p + n + "-GLB.glb"				
+				local glb = outPath + n + "-GLB.glb"				
+				local blnd = outPath + n + "-BLEND.zip"				
 				local ini = extractPath + "glb.ini"
+				local iniProcessed = outPath + n +".ini"
 				
 				local glbName = n + "-GLB"
-				local glbScreen = p + glbName + ".png"
+				local glbScreen = outPath + glbName + ".png"
 				local blendName = n + "-BLEND"
-				local blendScreen = p + blendName + ".png"
+				local blendScreen = outPath + blendName + ".png"
 				
 				local type = (trimLeft ext ".") as name
-				local filename = f
-				
+				local filename = f				
 				
 				local isChecked = getChecked ini
-				local isSplitted = getSplitted ini
+				--local isSplitted = splitterMgr.isSplitted()
+				
 				local isGlbExist = doesFileExist glb
+				local isBlndExist = doesFileExist blnd
+				
+				local approve = getApproveStatus id glb
+				local isApprove = approve == "Approve"
 				
 				local scn = getScene ini
 				
 				append ::BATCH_GLB_CONVERTER_FILES (
 					tmp path: p \
+					outPath: outPath \
 					name: n \
+					id: id \
 					filename: filename \
 					glb: glb \
+					blnd: blnd \
 					isGlbExist: isGlbExist \
+					isBlndExist: isBlndExist \
 					type: type \
 					ext: ext \
 					ini: ini \
 					extractPath: extractPath \
 					isChecked: isChecked \
-					isSplitted: isSplitted \
 					scene: scn \
 					glbName: glbName \
 					glbScreen: glbScreen \
 					blendName: blendName \
-					blendScreen: blendScreen
+					blendScreen: blendScreen \
+					approve: approve \
+					isApprove: isApprove \
+					iniProcessed: iniProcessed
 				)
 			)
 			
 			return ::BATCH_GLB_CONVERTER_FILES
 		)
-
+		
 		fn updateUI = (
 			local ss = getSelectedItems()
 			
@@ -2446,20 +2814,24 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				)
 			)
 			
-			btnBatchExport.enabled = lbxList.items.count != 0 and checkedCnt != 0
+			local isSetSyncFolder = edtInputPath.text != "" and doesDirectoryExist edtInputPath.text
+			
+			local isFilesExists = (getFiles (edtInputPath.text + "*.zip")).count > 0
+			local isProcessedFilesExists = (getFiles (edtInputPath.text + @"Processed\*.zip")).count > 0
+			
+			local isOneSelected = lbxList.items.count != 0 and ss.count == 1
+			local isAtleastOneSelected = lbxList.items.count != 0 and ss.count > 0
+			
+			btnBatchExport.enabled = isAtleastOneSelected and checkedCnt != 0
 			lblStatus.caption = formatString "Ready to Export: $1 | Total Items: $2" v: #(checkedCnt, lbxList.items.count)
-			btnBatchExport.caption = formatString "Batch Export ($1/$2)" v: #(checkedInSel, ss.count)
-			btnCheckArchive.enabled = lbxList.items.count != 0 and ss.count == 1
+			btnBatchExport.caption = formatString "Batch Export Selected ($1/$2)" v: #(checkedInSel, ss.count)
+			btnCheckArchive.enabled = isOneSelected							
+			btnQA.enabled = isOneSelected and ss[1].isGlbExist
+			btnStatusApprove.enabled = btnQA.enabled
+			btnStatusSkip.enabled = isOneSelected
 			
-			local isUseCoronaAOGroupEnabled = cbxUseCoronaAO.checked
-			spnAOPasses.enabled = isUseCoronaAOGroupEnabled
-			spnAOResolution.enabled = isUseCoronaAOGroupEnabled
-			spnAOSize.enabled = isUseCoronaAOGroupEnabled
-			cbxAODenoise.enabled = isUseCoronaAOGroupEnabled
-			
-			local isUseXNormalAOGroupEnabled = cbxUseXNormalAO.checked
-			spnAOXNormalResolution.enabled = isUseXNormalAOGroupEnabled
-			cbxAODenoiseXNormal.enabled = isUseXNormalAOGroupEnabled			
+			btnDownload.enabled = isSetSyncFolder	
+			btnUpload.enabled = isSetSyncFolder and isProcessedFilesExists
 		)
 	
 		fn updateLbx = (
@@ -2475,17 +2847,26 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			for i in ::BATCH_GLB_CONVERTER_FILES do (
 				local glbStatus = ""
+				local blndStatus = ""
 				local checkStatus = ""
-				local splitStatus = ""
-				if (i.isGlbExist) do glbStatus = "[GLB]"
+				local approve = ""
 				
-				i.isChecked = getChecked i.ini
-				i.isSplitted = getSplitted i.ini
+				if (i.isGlbExist) do glbStatus = " [GLB]"
+				if (i.isBlndExist) do blndStatus = " [BLEND]"
+				
+				i.isChecked = getChecked i.ini				
 				i.scene = getScene i.ini
+				if (i.approve != "") do approve = formatString "[$1] " v: #(i.approve)
 				
-				if (i.isChecked) do checkStatus = "[Checked]"
-				if (i.isSplitted) do splitStatus = "[Split]"
-				append o (formatString "$1 $2 $3 $4" v: #(i.name, checkStatus, glbStatus, splitStatus))
+				if (i.isChecked) do checkStatus = " [Checked]"
+				
+				if (i.approve != "") do (
+					checkStatus = ""
+					glbStatus = ""
+					blndStatus = ""
+				)
+				
+				append o (formatString "$1$2$3$4$5" v: #(approve, i.name, checkStatus, glbStatus, blndStatus))
 				if (findItem selectedNames i.name != 0) do append sel c
 				
 				c += 1
@@ -2497,6 +2878,19 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			updateUI()
 			
 			SetQuietMode false
+		)
+		
+		fn setModelStatus status: #skip = (
+			local items = getSelectedItems()
+			local i = items[1]
+			if (i == undefined) do return false
+			
+			setApproveStatus i.id i.glb status: status			
+			setApproveStatus i.id i.blnd status: status
+			
+			updateLbx()
+			
+			return true
 		)
 		
 		fn copyToClipboard b = (
@@ -2519,18 +2913,18 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			local ss = getSelectedItems()
 			ss = for i in ss where i.isChecked collect i
 			
-			if (ss.count == 0) do return messageBox "Please select items from list!" title: "Warning!"
+			if (ss.count == 0) do return messageBox "Please select [Checked] items from list!" title: "Warning!"
 			
 			local blendGLBMgr = BlenderGLBWrapper()
 			
 			-- If Blender not exist!
-			if (cbxMakeBlend.checked and not blendGLBMgr.isBlenderExist()) do (
+			if (::_rBatchGCGLBConverterSettings.cbxMakeBlend.checked and not blendGLBMgr.isBlenderExist()) do (
 				messageBox "Blender not installed!" title: "Error!"
 				return false
 			)
 			
 			local xNormal = ::API_BATCH_GLB_CONVERTER.getXNormal()
-			if (cbxUseXNormalAO.checked and xNormal == undefined) do (
+			if (::_rBatchGCGLBConverterSettings.cbxUseXNormalAO.checked and xNormal == undefined) do (
 				messageBox "xNormal not installed!" title: "Error!"
 				return false
 			)
@@ -2538,21 +2932,23 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			local p = edtInputPath.text
 			if (p == "") do return messageBox "Please select Sync Amazon Folder!" title: "Warning!"
 			
+			local outPath = ::BATCH_GLB_PROCESSED_DIR
+			
 			struct AO_Settings (enabled, passes, resolution, denoise, size, type)
 			ao = AO_Settings()
-			ao.enabled = cbxUseCoronaAO.checked or cbxUseXNormalAO.checked
+			ao.enabled = ::_rBatchGCGLBConverterSettings.cbxUseCoronaAO.checked or ::_rBatchGCGLBConverterSettings.cbxUseXNormalAO.checked
 			
-			if (cbxUseCoronaAO.checked) do (
-				ao.size = (spnAOSize.value as string) + "cm"
-				ao.passes = spnAOPasses.value
-				ao.resolution = spnAOResolution.value
-				ao.denoise = cbxAODenoise.checked
+			if (::_rBatchGCGLBConverterSettings.cbxUseCoronaAO.checked) do (
+				ao.size = (::_rBatchGCGLBConverterSettings.spnAOSize.value as string) + "cm"
+				ao.passes = ::_rBatchGCGLBConverterSettings.spnAOPasses.value
+				ao.resolution = ::_rBatchGCGLBConverterSettings.spnAOResolution.value
+				ao.denoise = ::_rBatchGCGLBConverterSettings.cbxAODenoise.checked
 				ao.type = #corona
 			)
 			
-			if (cbxUseXNormalAO.checked) do (
-				ao.resolution = spnAOXNormalResolution.value
-				ao.denoise = cbxAODenoiseXNormal.checked
+			if (::_rBatchGCGLBConverterSettings.cbxUseXNormalAO.checked) do (
+				ao.resolution = ::_rBatchGCGLBConverterSettings.spnAOXNormalResolution.value
+				ao.denoise = ::_rBatchGCGLBConverterSettings.cbxAODenoiseXNormal.checked
 				ao.type = #xnormal
 			)
 			
@@ -2560,6 +2956,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			progressStart "In process..."
 			escapeEnable = true
 			clearListener()
+			
+			SceneConverter.BackupOriginalFiles = false
 			
 			for i in 1 to ss.count do (
 				local f = ss[i]
@@ -2587,12 +2985,12 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				r.del = undefined
 				r.opened = true
 				
-				local glb = ::API_BATCH_GLB_CONVERTER.run scn: r out: p ao: ao
+				local glb = ::API_BATCH_GLB_CONVERTER.run scn: r out: outPath ao: ao
 				
 				if (getProgressCancel() or keyboard.escPressed) do return false
 				
 				-- Bender
-				if (cbxMakeBlend.checked) do (					
+				if (::_rBatchGCGLBConverterSettings.cbxMakeBlend.checked) do (					
 					blendGLBMgr.init glb: glb name: f.blendName
 					blendGLBMgr.convertGLB2Blend()
 					blendGLBMgr.makeScreenshot()
@@ -2625,8 +3023,24 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			updateLbx()
 			
-			ShellLaunch p ""
+			ShellLaunch outPath ""
 		)
+		
+		on btnDownload pressed do (
+			local downloadMgr = GCDownloaderWrapper()
+			downloadMgr.init (edtInputPath.text)
+			downloadMgr.run()
+			updateLbx()
+		)
+		
+		on btnUpload pressed do (
+			messageBox "This feature coming soon..."
+			updateLbx()
+		)
+		
+		on btnQA pressed do startQA()
+		on btnStatusApprove pressed do setModelStatus status: #approve
+		on btnStatusSkip pressed do setModelStatus status: #skip
 		
 		on lbxList rightClick do (
 			struct rc (
@@ -2650,48 +3064,84 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 							continue
 						)
 						
+						local id = i.id
+						
 						if (q == #files_archives) do deleteFile i.filename
 						
-						local files = getFiles (i.path + i.name + "-*")
+						local files = getFiles (i.outPath + i.id + "-*")
 						for ff in files do deleteFile ff
 						
 						deleteFile i.glb
+						deleteFile i.iniProcessed
+						
 						local cmd = "rmdir /s /q \"" +  i.extractPath  + "\""
-						HiddenDOSCommand cmd						
+						HiddenDOSCommand cmd
+						
+						delApproveStatus id i.glb
+						delApproveStatus id i.blnd
 						
 						c += 1
 					)
 					
 					updateLbx()
-					
-					if (openedScene != undefined) then (
-						local m = (c as string) + "files deleted! One file ignored " + openedScene + " because scene is opened!"
+					if (items.count == 1 and openedScene != undefined) then (
+						local m = "You cannot delete files because the scene " + openedScene + " is currently open!"
+						messageBox m title: "Info!" beep: true
+					) else if (openedScene != undefined) then (
+						local m = (c as string) + " items deleted! One item ignored " + openedScene + " because scene is opened!"
 						messageBox m title: "Info!"
 					) else (
-						local m = (c as string) + " files deleted!"
+						local m = (c as string) + " items deleted!"
 						messageBox m title: "Info!"
 					)
 				),
 				fn show = (
 					rcmenu rcListbox (
+						menuItem approveModel "Approve Model" enabled: isSelected
+						menuItem skipModel "Skip Model" enabled: isSelected
+						separator sep0
 						menuItem QA "QA GLB + Preview" enabled: this.isQAEnabled
 						menuItem openPreview "Open Site Preview" enabled: isSelected
 						menuItem copyArchivePath "Copy Archive Path" enabled: isSelected
 						separator sep1
 						menuItem removeAll "Remove All (+Generated Files)" enabled: atleastOneSelected
 						
-						on rcListbox open do (						
+						on rcListbox open do (							
+							local i = this.item
+							if (i == undefined) do return false
+							
+							local id = i.id
+							local f = this.item.filename
+							local status = getApproveStatus id i.glb
+							approveModel.checked = false
+							skipModel.checked = false
+							
+							if (this.items.count == 1) do (
+								if (not i.isChecked or not i.isGlbExist) do (
+									approveModel.enabled = false
+									skipModel.enabled = true
+								)
+								
+								if (status == "Approve") do (
+									approveModel.checked = true
+								)
+								
+								if (status == "Skip") do (
+									skipModel.checked = true
+								)
+							)
+						)
+						
+						on skipModel picked do (
+							setModelStatus status: #skip
+						)
+						
+						on approveModel picked do (
+							setModelStatus status: #approve
 						)
 						
 						on QA picked do (
-							local i = this.item
-							
-							w.startWebServer() 
-							w.previewModel i.glb
-							
-							w.previewImg i.name kill: "0"
-							w.previewImg i.glbScreen kill: "0" type: #local
-							if (cbxMakeBlend.checked) do w.previewImg i.blendScreen kill: "0" type: #local
+							startQA()
 						)
 						
 						on openPreview picked do (
@@ -2793,6 +3243,88 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 	
 		on lbxList selectionEnd do updateUI()
 		
+		
+		on _rBatchGCGLBConverter open do (
+			loadSettings()
+			
+			updateLbx()
+			
+			try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
+		)
+		
+		on _rBatchGCGLBConverter close do (
+			try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
+		)
+	
+		on _rBatchGCGLBConverter moved  p do (
+			if (::_rBatchGCGLBChecker != undefined) do (
+				SetDialogPos ::_rBatchGCGLBChecker [p[1] + 310, p[2]]			
+			)
+		)
+		
+		on btnBatchExport pressed do startBatchExport()
+	)
+	
+	rollout _rBatchGCGLBConverterSettings "Settings" category: 2 (
+		group "AO Settings" (
+			checkbox cbxUseCoronaAO "Use Corona AO"
+			
+			spinner spnAOPasses "Passes: " range: [1, 9999, 100] type: #integer fieldwidth: 50 align: #right across: 2 offset: [-15, 0]
+			spinner spnAOSize "Size (cm): " range: [0.01, 9999.0, 5.0] type: #float fieldwidth: 50 
+			spinner spnAOResolution "Resolution:"  range: [512, 8192, 1024] scale: 512 type: #integer align: #right fieldwidth: 50 across: 2  offset: [-15, 0]
+			checkbox cbxAODenoise "Use VRay Denoiser" offset: [15, 0]
+		)
+		
+		group "xNormal AO" (
+			checkbox cbxUseXNormalAO "Use xNormal AO"
+			spinner spnAOXNormalResolution "Resolution:"  range: [512, 8192, 1024] scale: 512 type: #integer align: #right fieldwidth: 50 across: 2  offset: [-15, 0]
+			checkbox cbxAODenoiseXNormal "Use VRay Denoiser" align: #left offset: [15, 0]
+		)
+		
+		group "Additional Formats" (
+			checkbox cbxMakeBlend "Blender (.blend)"	
+		)
+		
+		
+		fn loadSettings = (
+			local dd = '*'.get "tnt_path"
+			
+			local p = '*'.get "spnAOPasses" type: #int
+			spnAOPasses.value = if (p != 0) then p else 100
+			
+			local s = '*'.get "spnAOSize" type: #int
+			spnAOSize.value = if (s != 0) then s else 5.0
+			
+			local r = '*'.get "spnAOResolution" type: #int
+			spnAOResolution.value = if (r != 0) then r else 1024
+			
+			local r2 = '*'.get "spnAOXNormalResolution" type: #int
+			spnAOXNormalResolution.value = if (r2 != 0) then r2 else 1024
+			
+			cbxAODenoise.checked = '*'.get "cbxAODenoise" type: #bool_false
+			cbxUseCoronaAO.checked = '*'.get "cbxUseCoronaAO" type: #bool_false
+			cbxUseXNormalAO.checked = '*'.get "cbxUseXNormalAO" type: #bool_true
+			cbxAODenoiseXNormal.checked = '*'.get "cbxAODenoiseXNormal" type: #bool_false
+			cbxMakeBlend.checked = '*'.get "cbxMakeBlend" type: #bool_false
+			
+			if (cbxUseXNormalAO.checked) do (
+				cbxUseCoronaAO.checked = false
+				'*'.add  "cbxUseCoronaAO" false
+			)
+		)
+		
+		fn updateUI = (
+			local isUseCoronaAOGroupEnabled = cbxUseCoronaAO.checked
+			spnAOPasses.enabled = isUseCoronaAOGroupEnabled
+			spnAOResolution.enabled = isUseCoronaAOGroupEnabled
+			spnAOSize.enabled = isUseCoronaAOGroupEnabled
+			cbxAODenoise.enabled = isUseCoronaAOGroupEnabled
+			
+			local isUseXNormalAOGroupEnabled = cbxUseXNormalAO.checked
+			spnAOXNormalResolution.enabled = isUseXNormalAOGroupEnabled
+			cbxAODenoiseXNormal.enabled = isUseXNormalAOGroupEnabled			
+		)
+		
 		on spnAOPasses changed v do '*'.add  "spnAOPasses" v
 		on spnAOSize changed v do '*'.add  "spnAOSize" v
 		on spnAOResolution changed v do '*'.add  "spnAOResolution" v
@@ -2816,27 +3348,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			updateUI()
 		)
-	
 		
-		on _rBatchGCGLBConverter open do (
+		on _rBatchGCGLBConverterSettings open do (
 			loadSettings()
-			
-			updateLbx()
-			
-			try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
 		)
-		
-		on _rBatchGCGLBConverter close do (
-			try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
-		)
-	
-		on _rBatchGCGLBConverter moved  p do (
-			if (::_rBatchGCGLBChecker != undefined) do (
-				SetDialogPos ::_rBatchGCGLBChecker [p[1] + 310, p[2]]			
-			)
-		)
-		
-		on btnBatchExport pressed do startBatchExport()
 	)
 	
 	rollout _rAboutGCGLBConverter "About" category: 999 (
@@ -2987,5 +3502,6 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 	)
 
 	addRollout _rBatchGCGLBConverter floaterBatchGLBConverter rolledUp: false border: false
+	addRollout _rBatchGCGLBConverterSettings floaterBatchGLBConverter rolledUp: true 
 	addRollout _rAboutGCGLBConverter floaterBatchGLBConverter rolledUp: true
 )
