@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.1.2
+VERSION=1.1.3
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -66,6 +66,10 @@ Script for bulk conversion models to GLB=
 
 [1.1.2]
 + Added: Uploader=
+
+[1.1.3]
++ Added: normalizeUVWbyTiling function=
+- Removed: Real World Dependency=
 
 [FILES]
 Install.mcr=
@@ -1007,7 +1011,7 @@ struct GCUploaderWrapper (
 		if (mode == #test) do this.cred = this.test
 	),
 	fn run = (
-		if (not isCliExist) do return messageBox "Please install the AWS CLI2 utility!" title: "Error!"
+		if (not isCliExist) do return messageBox "Please install the AWS CLI V2 utility!" title: "Error!"
 		
 		this.upload this.uploadDir this.cred[2]
 		local isCronSynced = this.syncCRON()
@@ -1020,10 +1024,8 @@ struct GCUploaderWrapper (
 )
 
 struct GCDownloaderWrapper (
-	apiKey = "prodJq8PsdWdf34ffFtoMa698aidf22",
-	apiUrl = "https://greatcatalog.net/api/get-version-for-conversion.php?key=",
 	currentPath = getFileNamePath (getThisScriptFileName()),
-	url = apiUrl + apiKey,
+	url = "https://greatcatalog.net/api/get-version-for-conversion.php?key=prodJq8PsdWdf34ffFtoMa698aidf22",
 	data = "",
 	downloadDir = "",
 	fn trim s tag: " " = (
@@ -1627,6 +1629,46 @@ struct BatchGLBConverterWrapper (
 		)
 	),
 	
+	fn normalizeUVWbyTiling = (
+		for o in objects do (
+			if (not isValidNode o or isDeleted o or not (canConvertTo o Editable_Mesh) or classOf o.material == undefined) do continue
+			
+			if (classOf o.material == Multimaterial) do (
+				for id in o.material.materialIDList do (
+					local m = o.material.materialList[id]
+					if (m == undefined) do continue
+					local bb = getClassInstances Bitmaptexture target: m
+					if (bb.count == 0) do continue
+
+					try (bb[1].coords.realWorldScale = false) catch ()
+					local u = bb[1].coords.U_Tiling
+					local v = bb[1].coords.V_Tiling
+					
+					if (u == 1.0 and v == 1.0) do continue
+					
+					local moVolSelect = Vol__Select()
+					moVolSelect.level = 2
+					moVolSelect.volume = 5
+					moVolSelect.matID = id
+					addModifier o moVolSelect
+					
+					local modUvwXForm = UVW_Xform()
+					modUvwXForm.U_Tile = u
+					modUvwXForm.V_Tile = v
+					addModifier o modUvwXForm
+					
+					for b in bb do (
+						try (b.coords.realWorldScale = false) catch ()
+						b.coords.U_Tiling = 1.0
+						b.coords.V_Tiling = 1.0						
+					)
+					
+					convertToMesh o
+				)
+			)
+		)
+	),
+	
 	fn coronaLightMtlToGltfMaterial = (
 		for i in getClassInstances CoronaLightMtl do (
 			local nm = glTFMaterial()
@@ -1645,8 +1687,8 @@ struct BatchGLBConverterWrapper (
 	),
 	
 	fn clampColor c = (
-		if (c == black) do return color 4 4 4
-		if (c == white) do return color 251 251 251
+		if (c == black) do return color 6 6 6
+		if (c == white) do return color 248 248 248
 		return c
 	),
 	
@@ -2201,6 +2243,9 @@ struct BatchGLBConverterWrapper (
 		this.coronaPhysicalMtlToGltfMaterial falloffMaterials: falloffMaterials
 		this.coronaLightMtlToGltfMaterial()
 		
+		-- Tiling to proper mapping
+		normalizeUVWbyTiling()
+		
 		-- Render Maps
 		this.renderTexturesQueue()
 		this.renderNormalsQueue()
@@ -2392,7 +2437,6 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				checkbox cbxMeshSmooth "Model MeshSmoothed" align: #left enabled: false
 				checkbox cbxNoModifiers "Model without modifiers" align: #left enabled: false
 				checkbox cbxAsEditableMesh "Model as Editable Mesh" align: #left enabled: false
-				checkbox cbxNoRealWorldMapping "No RealWorld Tiling (Correct Mapping!)" align: #left enabled: false
 			)
 			
 			button btnSave "Save Scene" width: 254 height: 35 enabled: false
@@ -2413,8 +2457,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				cbxCorrectPivot,
 				cbxMeshSmooth,
 				cbxNoModifiers,
-				cbxAsEditableMesh,
-				cbxNoRealWorldMapping
+				cbxAsEditableMesh				
 			)
 			
 			local current = undefined
@@ -2662,7 +2705,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		)
 		
 		group "5. Upload to DB" (
-			button btnUpload "Upload All Approved Models " height: 24 width: 260
+			button btnUpload "Upload All Models " height: 24 width: 260
 		)
 		
 		global BATCH_GLB_CONVERTER_FILES = #()
