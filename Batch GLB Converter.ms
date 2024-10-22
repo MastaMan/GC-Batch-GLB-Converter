@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.1.1
+VERSION=1.1.2
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -64,6 +64,9 @@ Script for bulk conversion models to GLB=
 - Removed: Split files=
 - BugFix: QA=
 
+[1.1.2]
++ Added: Uploader=
+
 [FILES]
 Install.mcr=
 jpegoptim.exe=
@@ -89,6 +92,7 @@ blender-gen-ini.py=
 blender-bg-run.bat=
 download.bat=
 get-max-render.bat=
+sync-to-aws.bat=
 
 [SCRIPT]
 */
@@ -937,6 +941,81 @@ struct WebGLPlayerWrapper (
 	
 	fn run = (
 		startWebServer()
+	)
+)
+
+struct GCUploaderWrapper (
+	prod = #("https://greatcatalog.net/cron/autoconversion-processing.php?key=profdDFkljio3245ldsvvvvws214Po", "gc-autoconverted"),
+	test = #("https://t2.greatcatalog.net/cron/autoconversion-processing.php?key=devIddqdd3Depo989dsfNUiygw27D", "dev-gc-autoconverted-eu-1"),
+	currentPath = getFileNamePath (getThisScriptFileName()),
+	uploadDir = "",
+	cred = prod,
+	cli = @"C:\Program Files\Amazon\AWSCLIV2\aws.exe",
+	isCliExist = doesFileExist cli,
+		
+	fn trim s tag: " " = (
+		return trimLeft (trimRight s tag) tag
+	),
+	fn readResponce r = (
+		if (r == undefined) do return undefined
+		
+		local s = r.GetResponseStream()
+		local sr = dotNetObject "System.IO.StreamReader" s
+		return sr.ReadToEnd()
+	),
+	fn getRequest url timeoutMin: 180 = (
+		local w = (dotNetClass "System.Net.WebRequest").Create (url  + "&time=" + (timestamp() as string))
+		w.Timeout = timeoutMin * 60 * 1000
+		
+		try (	
+			local spm = dotNetClass "System.Net.ServicePointManager"
+			spm.SecurityProtocol = spm.SecurityProtocol.TLS12				
+			
+			w.Method = "GET"		
+			w.UserAgent = "Mozilla/5.0"
+			
+			local r = w.GetResponse()
+			
+			return (readResponce r)
+		) catch ()
+			
+		return undefined
+	),
+	fn rmDir d = (
+		local cmd = "rmdir /S /Q \"" + d + "\""
+		HiddenDOSCommand cmd donotwait: false
+	),
+	fn upload d b = (
+		local args = d + ";" + b
+		
+		local cmd = "sync-to-aws.bat \"" +  args + "\""
+		
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath
+		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+		
+		sysInfo.currentDir = curDir
+	),
+	fn syncCRON = (
+		local r = getRequest this.cred[1]
+		if (r == "All Done") do return true
+		return false
+	),
+	fn init uploadDir mode: #prod = (
+		this.uploadDir = uploadDir
+		if (mode == #test) do this.cred = this.test
+	),
+	fn run = (
+		if (not isCliExist) do return messageBox "Please install the AWS CLI2 utility!" title: "Error!"
+		
+		this.upload this.uploadDir this.cred[2]
+		local isCronSynced = this.syncCRON()
+		if (not isCronSynced) do  return messageBox "Problem with CRON synchronization, try running the process again!" title: "Error!"
+		
+		this.rmDir this.uploadDir
+		makeDir this.uploadDir all: true
+		messageBox "Upload files to DB was successful!" title: "Success!"
 	)
 )
 
@@ -2588,6 +2667,16 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		
 		global BATCH_GLB_CONVERTER_FILES = #()
 		global BATCH_GLB_PROCESSED_DIR = ""
+		global BATCH_GLB_MODE = #prod
+		
+		fn getMode = (
+			local m = '*'.get "mode"
+			if (m == "2") then (
+				return #test
+			) 
+			
+			return #prod
+		)
 		
 		fn loadSettings = (
 			local dd = '*'.get "tnt_path"
@@ -2597,6 +2686,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				::BATCH_GLB_PROCESSED_DIR = dd + @"Processed\"
 				makeDir ::BATCH_GLB_PROCESSED_DIR all: true
 			)					
+			
+			::BATCH_GLB_MODE = getMode()
 		)
 		
 		fn formatString s v: #() tag: "$" = (
@@ -2737,7 +2828,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			for f in ff do (
 				local p = getFilenamePath f
-				local outPath = p + @"Processed\"
+				local outPath = ::BATCH_GLB_PROCESSED_DIR
 				local n = getFilenameFile f
 				local id = n
 				local ext = getFilenameType f
@@ -2817,7 +2908,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			local isSetSyncFolder = edtInputPath.text != "" and doesDirectoryExist edtInputPath.text
 			
 			local isFilesExists = (getFiles (edtInputPath.text + "*.zip")).count > 0
-			local isProcessedFilesExists = (getFiles (edtInputPath.text + @"Processed\*.zip")).count > 0
+			local isProcessedFilesExists = (getFiles (::BATCH_GLB_PROCESSED_DIR + @"*.zip")).count > 0
 			
 			local isOneSelected = lbxList.items.count != 0 and ss.count == 1
 			local isAtleastOneSelected = lbxList.items.count != 0 and ss.count > 0
@@ -3034,7 +3125,17 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		)
 		
 		on btnUpload pressed do (
-			messageBox "This feature coming soon..."
+			local isAllStatusesSet = true
+			for i in ::BATCH_GLB_CONVERTER_FILES do (
+				if (i.approve == "") do isAllStatusesSet = false
+			)
+			
+			if (not isAllStatusesSet) do return messageBox "Please set the statuses Approve or Skip for all files!" title: "Error!"
+			
+			uploadMgr = GCUploaderWrapper()
+			uploadMgr.init (::BATCH_GLB_PROCESSED_DIR) mode: (::BATCH_GLB_MODE)
+			uploadMgr.run()
+			
 			updateLbx()
 		)
 		
@@ -3266,6 +3367,11 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 	)
 	
 	rollout _rBatchGCGLBConverterSettings "Settings" category: 2 (
+		group "Mode" (
+			checkbutton cbxModeProd "Production" across: 2 highlightColor: (color 52 168 83) width: 122
+			checkbutton cbxModeTest "Testing" highlightColor: (color 186 169 55) width: 122
+		)
+		
 		group "AO Settings" (
 			checkbox cbxUseCoronaAO "Use Corona AO"
 			
@@ -3283,6 +3389,31 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		
 		group "Additional Formats" (
 			checkbox cbxMakeBlend "Blender (.blend)"	
+		)
+		
+		fn setMode mode: #prod = (
+			if (mode == #prod) do (
+				cbxModeProd.checked = true
+				cbxModeTest.checked = false
+				'*'.add "mode" "1"			
+			) 
+			
+			if (mode == #test) do (
+				cbxModeProd.checked = false
+				cbxModeTest.checked = true
+				'*'.add "mode" "2"
+			)
+		)
+		
+		fn updateMode = (
+			local m = '*'.get "mode"
+			if (m == "2") then (
+				setMode mode: #test
+				return #test
+			) 
+			
+			setMode mode: #prod
+			return #prod		
 		)
 		
 		
@@ -3311,6 +3442,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				cbxUseCoronaAO.checked = false
 				'*'.add  "cbxUseCoronaAO" false
 			)
+			
+			updateMode()
 		)
 		
 		fn updateUI = (
@@ -3351,6 +3484,14 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		
 		on _rBatchGCGLBConverterSettings open do (
 			loadSettings()
+		)
+		
+		on cbxModeProd changed v do (
+			setMode mode: #prod
+		)
+	
+		on cbxModeTest changed v do (
+			setMode mode: #test
 		)
 	)
 	
