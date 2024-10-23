@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.1.3
+VERSION=1.1.4
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -70,6 +70,17 @@ Script for bulk conversion models to GLB=
 [1.1.3]
 + Added: normalizeUVWbyTiling function=
 - Removed: Real World Dependency=
+
+[1.1.4]
++ Added: Support Blender render insted screenshots=
++ Added: Builder for model-viewer=
++ Added: Function replaceToBlackEmptyBitmap for fix issue with missing filenames in bitmaps=
+* Changed: Improved HDRI=
+* Changed: GLB Cache Maps folder moved to extract folder=
+* Changed: Save converted GLB scene to extract folder (for better debuggin)=
+* Changed: normalizeUVWbyTiling impoved for better work with Bitmap instances=
+- BugFix: Not reset scene after Batch Export=
+
 
 [FILES]
 Install.mcr=
@@ -600,9 +611,12 @@ struct BlenderGLBWrapper (
 	currentPath = getFileNamePath (getThisScriptFileName()),
 	pythonScriptGenIni = currentPath + "blender-gen-ini.py",	
 	pythonScriptconvertGLB2Blend = currentPath + "blender-import-glb.py",	
-	pythonScriptZoomExtends = currentPath + "blender-zoom-extends.py",	
+	pythonScriptZoomExtends = currentPath + "blender-zoom-extends.py",
+	pythonScriptRender = currentPath + "blender-render.py",
+	
+	hdr = currentPath + @"model-viewer\hdri\studio.hdr",
 	blenderLocation = @"C:\Program Files\Blender Foundation\",
-	file = "",
+	file = "",	
 	ini = "",
 	zip = "",
 	preview = "",
@@ -669,6 +683,21 @@ struct BlenderGLBWrapper (
 		args = substituteString args "/" @"\"
 		
 		local cmd = bat + " \"" +  args + "\""
+		
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath
+		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+		
+		sysInfo.currentDir = curDir		
+	),
+	
+	fn makeRender = (
+		local b = getBlenderExe()
+		
+		local args = b + ";" + this.pythonScriptRender + ";" + this.file + ";" + this.preview + ";" + this.hdr
+		
+		local cmd = "blender-render.bat \"" +  args + "\""
 		
 		local curDir = sysInfo.currentDir
 		sysInfo.currentDir = currentPath
@@ -1334,9 +1363,15 @@ struct BatchGLBConverterWrapper (
 		return f	
 	),
 	
-	fn getCacheMapsDir = (
+	fn getSceneDir = (
 		local n = this.getSceneName()
-		local p = this.outPath + n + @"\_glb_cache\"
+		local p = maxFilePath
+		if (p == "") do p = this.outPath + n + @"\"
+		return p
+	),
+	
+	fn getCacheMapsDir = (
+		local p = (getSceneDir()) + @"\_glb_cache\"
 		makeDir p all: true
 		return p
 	),
@@ -1595,6 +1630,19 @@ struct BatchGLBConverterWrapper (
 		)
 	),
 	
+	fn replaceToBlackEmptyBitmap = (
+		for i in getClassInstances Bitmaptexture do (
+			if (i.filename != undefined and i.filename != "") do continue
+			local f = this.generateCacheFilename()
+			local b = bitmap 128 128 color: (color 5 5 5)
+			b.filename = f
+			save b
+			close b
+			
+			i.filename = f
+		)
+	),
+	
 	fn neutralizeFalloff = (
 		for i in getClassInstances Falloff do (
 			local nm = Mix()
@@ -1607,6 +1655,8 @@ struct BatchGLBConverterWrapper (
 			
 			nm.map1 = i.map1
 			nm.map2 = i.map2
+			
+			if (nm.map2 == undefined) do nm.map2 = nm.map1
 			
 			replaceInstances i nm
 		)
@@ -1633,6 +1683,9 @@ struct BatchGLBConverterWrapper (
 		for o in objects do (
 			if (not isValidNode o or isDeleted o or not (canConvertTo o Editable_Mesh) or classOf o.material == undefined) do continue
 			
+			local normalizeBitmaps = #()
+			local normalizeValues = #()
+			
 			if (classOf o.material == Multimaterial) do (
 				for id in o.material.materialIDList do (
 					local m = o.material.materialList[id]
@@ -1641,8 +1694,8 @@ struct BatchGLBConverterWrapper (
 					if (bb.count == 0) do continue
 
 					try (bb[1].coords.realWorldScale = false) catch ()
-					local u = bb[1].coords.U_Tiling
-					local v = bb[1].coords.V_Tiling
+					local u = bb[1].coords.U_Tiling as float
+					local v = bb[1].coords.V_Tiling as float
 					
 					if (u == 1.0 and v == 1.0) do continue
 					
@@ -1659,12 +1712,25 @@ struct BatchGLBConverterWrapper (
 					
 					for b in bb do (
 						try (b.coords.realWorldScale = false) catch ()
-						b.coords.U_Tiling = 1.0
-						b.coords.V_Tiling = 1.0						
+						
+						if (appendifUnique normalizeBitmaps b) do (
+							local _u = b.coords.U_Tiling / u
+							local _v = b.coords.V_Tiling / v
+							append normalizeValues #(_u, _v)
+						)
+						
+						--b.coords.U_Tiling = b.coords.U_Tiling / u
+						--b.coords.V_Tiling = b.coords.V_Tiling / v
 					)
-					
-					convertToMesh o
 				)
+				
+				for i in 1 to normalizeBitmaps.count do (
+					local b = normalizeBitmaps[i]
+					b.coords.U_Tiling = normalizeValues[i][1]
+					b.coords.V_Tiling = normalizeValues[i][2]
+				)
+				
+				convertToMesh o
 			)
 		)
 	),
@@ -2095,6 +2161,11 @@ struct BatchGLBConverterWrapper (
 		HiddenDOSCommand cmd donotwait: true
 	),
 	
+	fn saveGLBScene = (
+		local p = getSceneDir()
+		saveMaxFile (p + "GLB.max") quiet: true
+	),
+	
 	fn packGLTF i o = (
 		local args = i + ";" + o
 		args = substituteString args "/" @"\"
@@ -2246,6 +2317,9 @@ struct BatchGLBConverterWrapper (
 		-- Tiling to proper mapping
 		normalizeUVWbyTiling()
 		
+		-- Empty maps to Black!
+		replaceToBlackEmptyBitmap()
+	
 		-- Render Maps
 		this.renderTexturesQueue()
 		this.renderNormalsQueue()
@@ -2272,6 +2346,8 @@ struct BatchGLBConverterWrapper (
 		local jsonFile = out + scn.name + ".json"		
 		this.j.writeJson jsonFile this.json	
 		
+		this.saveGLBScene()	
+			
 		if (scn.del != undefined) do rmDir scn.del
 		
 		SetQuietMode false
@@ -3127,9 +3203,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				if (::_rBatchGCGLBConverterSettings.cbxMakeBlend.checked) do (					
 					blendGLBMgr.init glb: glb name: f.blendName
 					blendGLBMgr.convertGLB2Blend()
-					blendGLBMgr.makeScreenshot()
+					--blendGLBMgr.makeScreenshot()
+					blendGLBMgr.makeRender()
 					blendGLBMgr.makeArchive()
-					blendGLBMgr.makeJson()
+					blendGLBMgr.makeJson()					
 				)
 				
 				if (getProgressCancel() or keyboard.escPressed) do return false
@@ -3151,8 +3228,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				progressUpdate (100 * i / ss.count)*/
 			)
 			
-			progressEnd()			
-			--resetMaxFile #noprompt
+			progressEnd()
+			resetMaxFile #noprompt
 			SetQuietMode false
 			
 			updateLbx()
