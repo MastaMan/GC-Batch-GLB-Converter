@@ -111,7 +111,7 @@ blender-bg-run.bat=
 download.bat=
 get-max-render.bat=
 sync-to-aws.bat=
-test-blender-render.bat=
+blender-render.bat
 blender-render.py=
 
 [SCRIPT]
