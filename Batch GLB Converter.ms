@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.1.4
+VERSION=1.1.5
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -81,6 +81,9 @@ Script for bulk conversion models to GLB=
 * Changed: normalizeUVWbyTiling impoved for better work with Bitmap instances=
 - BugFix: Not reset scene after Batch Export=
 
+[1.1.5]
++ Added: Message if no *.max files in checking archive and auto status Skip=
+- BugFix: Blender render not installed necessary files after update=
 
 [FILES]
 Install.mcr=
@@ -108,6 +111,8 @@ blender-bg-run.bat=
 download.bat=
 get-max-render.bat=
 sync-to-aws.bat=
+test-blender-render.bat=
+blender-render.py=
 
 [SCRIPT]
 */
@@ -2668,7 +2673,13 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					if (maxFileName == "") do isErrorOpen = true
 				)
 				
-				if (isErrorOpen) do messageBox "Error while opening scene!\nTry to clear extracted files and repeat againg!" title: "Error!"
+				local maxFiles = getFiles (current.extractPath + "*.max")
+				if (maxFiles.count == 0) then (
+					::_rBatchGCGLBConverter.setModelStatus status: #skip
+					messageBox "Not found *.max files in archive.\nAutomatically applied Skip status!" title: "Error!"				
+				) else if (isErrorOpen) do (
+					messageBox "Error while opening scene!\nTry to clear extracted files and repeat againg!" title: "Error!"
+				)
 				
 				-- If not splitted and not checked yet
 				/*if (getter "checked" != "true" and getter "splitted" != "true") do (
