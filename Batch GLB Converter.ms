@@ -869,7 +869,7 @@ struct BlenderGLBWrapper (
 		j.addData json "verts" (getVerts())
 		j.addData json "units" (getUnits())
 		j.addData json "authorsVersions" #(v)
-		j.addData json "versionsAndRenders" #(#(v, r))
+		j.addData json "versionsAndRenders" #(#(#(v, r)))
 		
 		deleteBlenderIni()	
 	),
