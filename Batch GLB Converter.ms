@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.1.5
+VERSION=1.1.6
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -84,6 +84,11 @@ Script for bulk conversion models to GLB=
 [1.1.5]
 + Added: Message if no *.max files in checking archive and auto status Skip=
 - BugFix: Blender render not installed necessary files after update=
+
+[1.1.6]
++ Added: More options in JSONs like in Auto Moder=
+- BugFix: No open some *.max files on Check Archive=
+- BugFix: Open scenes withou -VRay or -Corona postfixes=
 
 [FILES]
 Install.mcr=
@@ -853,14 +858,19 @@ struct BlenderGLBWrapper (
 	fn generateBlenderIni = (
 		runBatch pythonScriptGenIni
 		
+		local v = getVer()
+		local r = getRender()
+		
 		j.addData json "program" "blender"
-		j.addData json "version" (getVer())
-		j.addData json "rendersion" (getRender())
+		j.addData json "version" v
+		j.addData json "render" r
 		j.addData json "size" (getDim())
 		j.addData json "polys" (getPolys())
 		j.addData json "verts" (getVerts())
 		j.addData json "units" (getUnits())
-			
+		j.addData json "authorsVersions" #(v)
+		j.addData json "versionsAndRenders" #(#(v, r))
+		
 		deleteBlenderIni()	
 	),
 	fn convertGLB2Blend = (
@@ -2337,6 +2347,7 @@ struct BatchGLBConverterWrapper (
 		local glbPolys = polyCount objects
 		local glbSize = getFileMb o
 		
+		this.j.addData this.json "program" "glb"
 		this.j.addData this.json "ao" ao.enabled
 		this.j.addData this.json "aoType" ao.type
 		this.j.addData this.json "sizeMb" glbSize
@@ -2377,6 +2388,32 @@ struct BatchGLBConverterWrapper (
 		sysInfo.currentDir = curDir
     ),
 	
+	fn getMaxFile o = (
+		local ptrns = #(
+			"GC-*-Corona.max",
+			"GC-*-VRay.max",
+			"GC-*.max",
+			"*Corona*.max",
+			"*VRay*.max",
+			"*V-Ray*.max",
+			"*V_Ray*.max",
+			"*crn*.max",
+			"*vr*.max",
+			"*.max"
+		)
+		
+		local files = getFiles (o + "*.max")
+
+		for p in ptrns do (
+			for f in files do (
+				local ne = filenameFromPath f
+				if (MatchPattern ne pattern: p) do return f
+			)
+		)
+		
+		return undefined
+	),
+	
 	fn load f = (
 		sleep 0.1
 		try (resetMaxFile #noprompt) catch ()
@@ -2414,8 +2451,7 @@ struct BatchGLBConverterWrapper (
 		r.type = #zip
 		r.del = o
 		
-		local m = (getFiles (o + "GC-*-Corona.max"))[1]			
-		if (m == undefined) do m = (getFiles (o + "GC-*-VRay.max"))[1]
+		local m = getMaxFile o		
 		
 		if (m == undefined) do (
 			SetQuietMode false
