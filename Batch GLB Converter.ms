@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.1.6
+VERSION=1.1.7
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -89,6 +89,12 @@ Script for bulk conversion models to GLB=
 + Added: More options in JSONs like in Auto Moder=
 - BugFix: No open some *.max files on Check Archive=
 - BugFix: Open scenes withou -VRay or -Corona postfixes=
+
+[1.1.7]
++ Added: Function neutralizeDoubleSided for fix issue with black materials=
+* Changed: Decrase Exposure for model-viwer player=
+* Changed: Tone mapping changed to ACES for model-viwer player=
+- BugFix: Some JSON info not written=
 
 [FILES]
 Install.mcr=
@@ -871,7 +877,7 @@ struct BlenderGLBWrapper (
 		j.addData json "authorsVersions" #(v)
 		j.addData json "versionsAndRenders" #(#(#(v, r)))
 		
-		deleteBlenderIni()	
+		deleteBlenderIni()
 	),
 	fn convertGLB2Blend = (
 		runImport pythonScriptconvertGLB2Blend
@@ -1677,6 +1683,15 @@ struct BatchGLBConverterWrapper (
 		)
 	),
 	
+	fn neutralizeDoubleSided = (
+		for i in getClassInstances doubleSided do (
+			local nm = i.material1
+			nm.name = i.name
+			
+			replaceInstances i nm
+		)		 
+	),
+	
 	fn neutralizeCoronaLayered = (
 		for i in getClassInstances CoronaLayeredMtl do (
 			local nm = i.baseMtl
@@ -2324,6 +2339,7 @@ struct BatchGLBConverterWrapper (
 		this.neutralizeCoronaAO()
 		this.neutralizeRaySwitch()
 		this.neutralizeCoronaLayered()
+		this.neutralizeDoubleSided()
 		
 		-- Convert to GLTF Material
 		this.coronaPhysicalMtlToGltfMaterial falloffMaterials: falloffMaterials
