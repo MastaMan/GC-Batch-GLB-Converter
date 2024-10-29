@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.1.8
+VERSION=1.1.9
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -99,6 +99,12 @@ Script for bulk conversion models to GLB=
 
 [1.1.8]
 * Changed: Upload URL=
+
+[1.1.9]
++ Added: Bulk set status Approve or Skip=
+- BugFix: AWS upload cmd line=
+- BugFix: BLENDER_EVEE_NEXT instead Evee=
+
 
 [FILES]
 Install.mcr=
@@ -814,7 +820,7 @@ struct BlenderGLBWrapper (
 		if (matchpattern r pattern:"BLENDER_RENDER") do return "Blender Render"
 		if (matchpattern r pattern:"CYCLES") do return "Cycles"
 		if (matchpattern r pattern:"EEVEE") do return "Eevee"
-		if (matchpattern r pattern:"BLENDER_EEVEE") do return "Eevee"
+		if (matchpattern r pattern:"BLENDER_EEVEE*") do return "Eevee"
 		if (matchpattern r pattern:"WORKBENCH") do return "Workbench Render"
 		if (matchpattern r pattern:"LUXCORE") do return "LuxCoreRender"
 		if (matchpattern r pattern:"RPR") do return "Radeon ProRender"
@@ -1008,6 +1014,7 @@ struct GCUploaderWrapper (
 	test = #("https://t2.greatcatalog.net/api/cron-processing-autoconverted.php?k=devIddqdd3Depo989dsfNUiygw27D", "dev-gc-autoconverted-eu-1"),
 	currentPath = getFileNamePath (getThisScriptFileName()),
 	uploadDir = "",
+	root = "",
 	cred = prod,
 	cli = @"C:\Program Files\Amazon\AWSCLIV2\aws.exe",
 	isCliExist = doesFileExist cli,
@@ -1045,6 +1052,7 @@ struct GCUploaderWrapper (
 		HiddenDOSCommand cmd donotwait: false
 	),
 	fn upload d b = (
+		if (d.count > 3) do d = trimRight d @"\"
 		local args = d + ";" + b
 		
 		local cmd = "sync-to-aws.bat \"" +  args + "\""
@@ -1063,6 +1071,7 @@ struct GCUploaderWrapper (
 	),
 	fn init uploadDir mode: #prod = (
 		this.uploadDir = uploadDir
+		this.root = substituteString this.uploadDir @"Processed\" ""
 		if (mode == #test) do this.cred = this.test
 	),
 	fn run = (
@@ -1072,8 +1081,8 @@ struct GCUploaderWrapper (
 		local isCronSynced = this.syncCRON()
 		if (not isCronSynced) do  return messageBox "Problem with CRON synchronization, try running the process again!" title: "Error!"
 		
-		this.rmDir this.uploadDir
-		makeDir this.uploadDir all: true
+		this.rmDir this.root
+		makeDir this.root all: true
 		messageBox "Upload files to DB was successful!" title: "Success!"
 	)
 )
@@ -3105,8 +3114,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			btnBatchExport.caption = formatString "Batch Export Selected ($1/$2)" v: #(checkedInSel, ss.count)
 			btnCheckArchive.enabled = isOneSelected							
 			btnQA.enabled = isOneSelected and ss[1].isGlbExist
-			btnStatusApprove.enabled = btnQA.enabled
-			btnStatusSkip.enabled = isOneSelected
+			btnStatusApprove.enabled = isAtleastOneSelected
+			btnStatusSkip.enabled = isAtleastOneSelected
 			
 			btnDownload.enabled = isSetSyncFolder	
 			btnUpload.enabled = isSetSyncFolder and isProcessedFilesExists
@@ -3160,11 +3169,11 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		
 		fn setModelStatus status: #skip = (
 			local items = getSelectedItems()
-			local i = items[1]
-			if (i == undefined) do return false
 			
-			setApproveStatus i.id i.glb status: status			
-			setApproveStatus i.id i.blnd status: status
+			for i in items do (
+				setApproveStatus i.id i.glb status: status			
+				setApproveStatus i.id i.blnd status: status
+			)
 			
 			updateLbx()
 			
