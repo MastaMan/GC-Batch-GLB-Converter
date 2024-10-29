@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.1.7
+VERSION=1.1.8
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -95,6 +95,10 @@ Script for bulk conversion models to GLB=
 * Changed: Decrase Exposure for model-viwer player=
 * Changed: Tone mapping changed to ACES for model-viwer player=
 - BugFix: Some JSON info not written=
+
+
+[1.1.8]
+* Changed: Upload URL=
 
 [FILES]
 Install.mcr=
@@ -998,9 +1002,10 @@ struct WebGLPlayerWrapper (
 	)
 )
 
+
 struct GCUploaderWrapper (
 	prod = #("https://greatcatalog.net/cron/autoconversion-processing.php?key=profdDFkljio3245ldsvvvvws214Po", "gc-autoconverted"),
-	test = #("https://t2.greatcatalog.net/cron/autoconversion-processing.php?key=devIddqdd3Depo989dsfNUiygw27D", "dev-gc-autoconverted-eu-1"),
+	test = #("https://t2.greatcatalog.net/api/cron-processing-autoconverted.php?k=devIddqdd3Depo989dsfNUiygw27D", "dev-gc-autoconverted-eu-1"),
 	currentPath = getFileNamePath (getThisScriptFileName()),
 	uploadDir = "",
 	cred = prod,
