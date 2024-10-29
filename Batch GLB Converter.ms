@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.1.9
+VERSION=1.2.0
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -96,7 +96,6 @@ Script for bulk conversion models to GLB=
 * Changed: Tone mapping changed to ACES for model-viwer player=
 - BugFix: Some JSON info not written=
 
-
 [1.1.8]
 * Changed: Upload URL=
 
@@ -104,6 +103,9 @@ Script for bulk conversion models to GLB=
 + Added: Bulk set status Approve or Skip=
 - BugFix: AWS upload cmd line=
 - BugFix: BLENDER_EVEE_NEXT instead Evee=
+
+[1.2.0]
+- BugFix: Glass materials conversion=
 
 
 [FILES]
@@ -1884,10 +1886,15 @@ struct BatchGLBConverterWrapper (
 				this.addTextureToQueue nm.AlphaMap
 				nm.alphaMode = 3
 			) else if (i.refractionAmount != 0) do (
-				local c = i.refractionAmount * 255.0
+				local c = (1.0 - i.refractionAmount) * 255.0
+				
+				-- Clamp black color
+				if (c < 30) do c = 30
 				
 				nm.AlphaMap = ColorMap()
 				nm.AlphaMap.solidcolor = color c c c
+				nm.alphaMode = 3
+				
 				this.addTextureToQueue nm.AlphaMap
 			)
 			
@@ -2364,7 +2371,7 @@ struct BatchGLBConverterWrapper (
 		
 		-- Empty maps to Black!
 		replaceToBlackEmptyBitmap()
-	
+		
 		-- Render Maps
 		this.renderTexturesQueue()
 		this.renderNormalsQueue()
