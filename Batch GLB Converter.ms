@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.2.0
+VERSION=1.2.1
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -107,6 +107,11 @@ Script for bulk conversion models to GLB=
 [1.2.0]
 - BugFix: Glass materials conversion=
 
+[1.2.1]
++ Added: Image Color Clamping for textures=
++ Added: Contrast Blender renders=
+- BugFix: Opacity materials conversion=
+
 
 [FILES]
 Install.mcr=
@@ -136,6 +141,8 @@ get-max-render.bat=
 sync-to-aws.bat=
 blender-render.bat
 blender-render.py=
+clamp-colors.bat=
+contrast.bat=
 
 [SCRIPT]
 */
@@ -718,8 +725,17 @@ struct BlenderGLBWrapper (
 		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
 		
 		sysInfo.currentDir = curDir		
-	),
-	
+	),	
+	fn contrastImage f = (
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = this.currentPath
+		
+		local args = f + ";" + f
+		local cmd = "contrast.bat \"" + args + "\""
+		
+		hiddenDosCommand cmd exitcode:&exitcode			
+		sysInfo.currentDir = curDir
+	),	
 	fn makeRender = (
 		local b = getBlenderExe()
 		
@@ -732,9 +748,10 @@ struct BlenderGLBWrapper (
 		
 		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
 		
-		sysInfo.currentDir = curDir		
+		sysInfo.currentDir = curDir
+		
+		this.contrastImage this.preview
 	),
-	
 	fn getRealName = (
 		if (maxFileName != "") do (
 			local n = getFilenameFile maxFileName
@@ -1091,7 +1108,9 @@ struct GCUploaderWrapper (
 
 struct GCDownloaderWrapper (
 	currentPath = getFileNamePath (getThisScriptFileName()),
-	url = "https://greatcatalog.net/api/get-version-for-conversion.php?key=prodJq8PsdWdf34ffFtoMa698aidf22",
+	prod = "https://greatcatalog.net/api/get-version-for-conversion.php?key=prodJq8PsdWdf34ffFtoMa698aidf22",
+	test = "https://t2.greatcatalog.net/api/get-version-for-conversion.php?key=iddqD2024IFjodtoMa63ta45fsdaf23",
+	cred = prod,
 	data = "",
 	downloadDir = "",
 	fn trim s tag: " " = (
@@ -1149,7 +1168,7 @@ struct GCDownloaderWrapper (
 		return for i in ff collect (getFilenameFile f)
 	),
 	fn run = (
-		this.data = this.getRequest this.url
+		this.data = this.getRequest this.cred
 
 		if (this.data == undefined) do return messageBox "Unable to retrieve data from the server!" title: "Error!"
 		local dd = FilterString this.data "\n"
@@ -1239,7 +1258,8 @@ struct GCDownloaderWrapper (
 			return messageBox m title: "Success!"
 		)
 	),
-	fn init downloadDir = (
+	fn init downloadDir mode: #prod = (
+		if (mode == #test) do this.cred = this.test
 		makeDir downloadDir all: true
 		this.downloadDir = downloadDir
 	)
@@ -1252,6 +1272,7 @@ struct BatchGLBConverterWrapper (
 	texturesQueue = #(),
 	normalsQueue = #(),
 	outPath = "",
+	convertexe = "",
 	json = #(),
 	j = JsonWrapper(),
 	w = WebGLPlayerWrapper(),	
@@ -1341,18 +1362,20 @@ struct BatchGLBConverterWrapper (
 		sysInfo.currentDir = curDir 
 	),
 	
-	fn convertImageTo f isDelete: true type: #jpg = (
+	fn deployConvertExe = (
 		local convertexe = this.selfPath + "convert.exe"
 		local tmpDir = @"C:\temp\"
 		local tmpConvertexe = tmpDir + "convert.exe"
 		makeDir tmpDir
 		copyFile convertexe tmpConvertexe
-		
+		return tmpConvertexe
+	),
+	
+	fn convertImageTo f isDelete: true type: #jpg = (		
 		local p = getFilenamePath f
 		local n = getFilenameFile f
-		local ext = getFilenameType f
-		
-		local exe = tmpConvertexe
+		local ext = getFilenameType f		
+		local exe = this.convertexe
 		
 		local tt = case type of (
 			#png: ".png"
@@ -1373,6 +1396,29 @@ struct BatchGLBConverterWrapper (
 		this.optimizeImages files: #(ff)
 		
 		return ff
+	),
+	
+	fn contrastImage f = (
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = this.selfPath
+		
+		local args = f + ";" + f
+		local cmd = "contrast.bat \"" + args + "\""
+		
+		hiddenDosCommand cmd exitcode:&exitcode			
+		sysInfo.currentDir = curDir
+	),
+	
+	fn clampImageColors f = (
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = this.selfPath
+		
+		local args = f + ";" + f
+		local cmd = "clamp-colors.bat \"" + args + "\""
+		
+		
+		hiddenDosCommand cmd exitcode:&exitcode			
+		sysInfo.currentDir = curDir
 	),
 	
 	fn resizeImage f maxSize: 2048 type: #jpg = (
@@ -1448,7 +1494,7 @@ struct BatchGLBConverterWrapper (
 		return getFileNameFile maxFileName
 	),
 	
-	fn renderTargetMap t size: [2048, 2048] isReplace: true type: #jpg = (
+	fn renderTargetMap t size: [2048, 2048] isReplace: true type: #jpg clamp: true = (
 		if (t == undefined) do return undefined
 		local p = this.getCacheMapsDir()
 		makeDir p all: true
@@ -1458,6 +1504,8 @@ struct BatchGLBConverterWrapper (
 		rm.filename = f
 		save rm
 		close rm
+		
+		if (clamp) do this.clampImageColors f
 		
 		this.optimizeImages files: #(f)
 		
@@ -1472,7 +1520,7 @@ struct BatchGLBConverterWrapper (
 		return mapPaths.getFullFilePath (filenameFromPath f)
 	),
 	
-	fn cacheBitmap t resize: true type: #jpg = (
+	fn cacheBitmap t resize: true type: #jpg clamp: true = (
 		local f = t.filename
 		if (f == undefined or f == "") do return undefined
 		local ff = this.generateCacheFilename()
@@ -1482,7 +1530,8 @@ struct BatchGLBConverterWrapper (
 		
 		ff = this.convertImageTo ff type: type
 		
-		if (resize) do this.resizeImage ff
+		if (resize) do this.resizeImage ff		
+		if (clamp) do this.clampImageColors ff
 		
 		t.filename = ff
 		
@@ -1842,7 +1891,7 @@ struct BatchGLBConverterWrapper (
 			-- Opacity
 			if (i.opacityTexmap != undefined) do (
 				nm.AlphaMap = i.opacityTexmap
-				alphaMode = 2
+				nm.alphaMode = 2
 			)
 			
 			-- Bump
@@ -2328,7 +2377,7 @@ struct BatchGLBConverterWrapper (
 		*/
 		
 		if (ao == undefined or scn == undefined) do return false
-		
+		this.convertexe = deployConvertExe()
 		ATSOps.Refresh()
 		
 		this.outPath = out
@@ -3323,7 +3372,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		
 		on btnDownload pressed do (
 			local downloadMgr = GCDownloaderWrapper()
-			downloadMgr.init (edtInputPath.text)
+			downloadMgr.init (edtInputPath.text) mode: (::BATCH_GLB_MODE)
 			downloadMgr.run()
 			updateLbx()
 		)
