@@ -109,6 +109,7 @@ Script for bulk conversion models to GLB=
 
 [1.2.1]
 + Added: Image Color Clamping for textures=
++ Added: Prod and Test urls for model downloader=
 + Added: Contrast Blender renders=
 - BugFix: Opacity materials conversion=
 
