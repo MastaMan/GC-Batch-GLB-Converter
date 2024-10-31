@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.2.1
+VERSION=1.2.2
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -112,6 +112,11 @@ Script for bulk conversion models to GLB=
 + Added: Prod and Test urls for model downloader=
 + Added: Contrast Blender renders=
 - BugFix: Opacity materials conversion=
+
+[1.2.2]
++ Added: Unfreeze all when scene check=
++ Added: Unhide all when scene check=
+- BugFix: Textures offset in normalizeUVWbyTiling=
 
 
 [FILES]
@@ -1775,12 +1780,13 @@ struct BatchGLBConverterWrapper (
 		)
 	),
 	
-	fn normalizeUVWbyTiling = (
+	fn normalizeRealWorldUVWbyTiling = (
 		for o in objects do (
 			if (not isValidNode o or isDeleted o or not (canConvertTo o Editable_Mesh) or classOf o.material == undefined) do continue
 			
 			local normalizeBitmaps = #()
 			local normalizeValues = #()
+			local normalizeOffsets = #()
 			
 			if (classOf o.material == Multimaterial) do (
 				for id in o.material.materialIDList do (
@@ -1788,12 +1794,16 @@ struct BatchGLBConverterWrapper (
 					if (m == undefined) do continue
 					local bb = getClassInstances Bitmaptexture target: m
 					if (bb.count == 0) do continue
+					local isRealWorld = try(bb[1].coords.realWorldScale == true) catch (false)
+					if (not isRealWorld) do continue
 
 					try (bb[1].coords.realWorldScale = false) catch ()
 					local u = bb[1].coords.U_Tiling as float
 					local v = bb[1].coords.V_Tiling as float
+					local uOffset = bb[1].coords.U_Offset as float
+					local vOffset = bb[1].coords.V_Offset as float
 					
-					if (u == 1.0 and v == 1.0) do continue
+					if ((u == 1.0 and v == 1.0) or (uOffset == 0 and vOffset == 0)) do continue
 					
 					local moVolSelect = Vol__Select()
 					moVolSelect.level = 2
@@ -1804,6 +1814,8 @@ struct BatchGLBConverterWrapper (
 					local modUvwXForm = UVW_Xform()
 					modUvwXForm.U_Tile = u
 					modUvwXForm.V_Tile = v
+					modUvwXForm.U_Offset = uOffset
+					modUvwXForm.V_Offset = vOffset
 					addModifier o modUvwXForm
 					
 					for b in bb do (
@@ -1812,7 +1824,11 @@ struct BatchGLBConverterWrapper (
 						if (appendifUnique normalizeBitmaps b) do (
 							local _u = b.coords.U_Tiling / u
 							local _v = b.coords.V_Tiling / v
+							local _uOffset = b.coords.U_Offset - uOffset
+							local _vOffset = b.coords.V_Offset - vOffset
+							
 							append normalizeValues #(_u, _v)
+							append normalizeOffsets #(_uOffset, _vOffset)
 						)
 						
 						--b.coords.U_Tiling = b.coords.U_Tiling / u
@@ -1824,6 +1840,8 @@ struct BatchGLBConverterWrapper (
 					local b = normalizeBitmaps[i]
 					b.coords.U_Tiling = normalizeValues[i][1]
 					b.coords.V_Tiling = normalizeValues[i][2]
+					b.coords.U_Offset = normalizeOffsets[i][1]
+					b.coords.V_Offset = normalizeOffsets[i][2]
 				)
 				
 				convertToMesh o
@@ -2416,8 +2434,8 @@ struct BatchGLBConverterWrapper (
 		this.coronaPhysicalMtlToGltfMaterial falloffMaterials: falloffMaterials
 		this.coronaLightMtlToGltfMaterial()
 		
-		-- Tiling to proper mapping
-		normalizeUVWbyTiling()
+		-- Tiling to proper mapping	for RealWorld
+		normalizeRealWorldUVWbyTiling()
 		
 		-- Empty maps to Black!
 		replaceToBlackEmptyBitmap()
@@ -2812,6 +2830,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				max tool zoomextents
 				max tool maximize
 				max views redraw
+				max unfreeze all
+				max unhide all
 				
 				updateUI()
 				
