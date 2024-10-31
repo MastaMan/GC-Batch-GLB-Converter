@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.2.2
+VERSION=1.2.3
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -118,6 +118,8 @@ Script for bulk conversion models to GLB=
 + Added: Unhide all when scene check=
 - BugFix: Textures offset in normalizeUVWbyTiling=
 
+[1.2.3]
+- BugFix: Can export Skipped items=
 
 [FILES]
 Install.mcr=
@@ -3172,7 +3174,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			local checkedCnt = 0
 			local checkedInSel = 0
 			for i in ::BATCH_GLB_CONVERTER_FILES do (
-				if (i.isChecked) do (
+				if (i.isChecked and i.approve != "Skip") do (
 					checkedCnt += 1
 					if (findItem ss i != 0) do checkedInSel += 1
 				)
@@ -3275,7 +3277,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		
 		fn startBatchExport = (
 			local ss = getSelectedItems()
-			ss = for i in ss where i.isChecked collect i
+			ss = for i in ss where i.isChecked and i.approve != "Skip" collect i
 			
 			if (ss.count == 0) do return messageBox "Please select [Checked] items from list!" title: "Warning!"
 			
