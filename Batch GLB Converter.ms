@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.2.3
+VERSION=1.2.4
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -120,6 +120,16 @@ Script for bulk conversion models to GLB=
 
 [1.2.3]
 - BugFix: Can export Skipped items=
+
+[1.2.4]
++ Added: Kill Tex Tiling option for each scene=
++ Added: Skip statuses=
++ Added: Polys to Scene Info dialog=
++ Added: Comment to Scene Info dialog=
++ Added: Backface cull enable for all objects when open scene=
+* Changed: Redesigned Scene Info dialog=
+- BugFix: Poor baking Falloff=
+- BugFix: Huge bump, clamp to 0.2=
 
 [FILES]
 Install.mcr=
@@ -1750,6 +1760,9 @@ struct BatchGLBConverterWrapper (
 			nm.map1 = i.map1
 			nm.map2 = i.map2
 			
+			if (classOf i.map1 == Bitmaptexture) do (
+				return replaceInstances i i.map1
+			)
 			if (nm.map2 == undefined) do nm.map2 = nm.map1
 			
 			replaceInstances i nm
@@ -1797,8 +1810,7 @@ struct BatchGLBConverterWrapper (
 					local bb = getClassInstances Bitmaptexture target: m
 					if (bb.count == 0) do continue
 					local isRealWorld = try(bb[1].coords.realWorldScale == true) catch (false)
-					if (not isRealWorld) do continue
-
+					
 					try (bb[1].coords.realWorldScale = false) catch ()
 					local u = bb[1].coords.U_Tiling as float
 					local v = bb[1].coords.V_Tiling as float
@@ -1917,7 +1929,7 @@ struct BatchGLBConverterWrapper (
 			
 			-- Bump
 			nm.normal = i.baseBumpMapAmount
-			if (nm.normal > 1.0) do nm.normal = 1.0
+			if (nm.normal > 0.2) do nm.normal = 0.2
 			if (i.baseBumpTexmap != undefined) do (
 				nm.normalMap = copy i.baseBumpTexmap
 				this.addNormalToQueue nm.normalMap
@@ -1927,7 +1939,7 @@ struct BatchGLBConverterWrapper (
 			if (i.displacementTexmap != undefined) do (
 				nm.normalMap = copy i.displacementTexmap
 				this.addNormalToQueue nm.normalMap
-				nm.normal = 1.0
+				nm.normal = 0.8
 			)
 			
 			-- Metalness
@@ -2388,7 +2400,7 @@ struct BatchGLBConverterWrapper (
 		return cc
 	),
 	
-	fn run out: "" scn: undefined ao: undefined = (
+	fn run out: "" scn: undefined ao: undefined isNormalizeTiling: false = (
 		this.json = #()
 		SetQuietMode true
 		/* 
@@ -2436,8 +2448,8 @@ struct BatchGLBConverterWrapper (
 		this.coronaPhysicalMtlToGltfMaterial falloffMaterials: falloffMaterials
 		this.coronaLightMtlToGltfMaterial()
 		
-		-- Tiling to proper mapping	for RealWorld
-		normalizeRealWorldUVWbyTiling()
+		-- Tiling to proper mapping	(Kill Tiling)
+		if (isNormalizeTiling) do normalizeRealWorldUVWbyTiling()
 		
 		-- Empty maps to Black!
 		replaceToBlackEmptyBitmap()
@@ -2629,6 +2641,10 @@ struct '@' (
 global '*' = '@'()	
 global _rBatchGCGLBConverter = undefined
 global _rBatchGCGLBConverterSettings = undefined
+
+try (DestroyDialog _rSendCommend) catch ()
+global _rSendCommend = undefined
+
 if (::_rBatchGCGLBChecker == undefined) do (
 	global _rBatchGCGLBChecker = undefined
 )
@@ -2648,43 +2664,49 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		rollout _rBatchGCGLBChecker "" (
 			group "Info" ( 
 				label lblName "Loading..." align: #left
+				label lblPolys "" align: #left
 				label lblIsChecked "" align: #left
+				label lblStatus "" align: #left
+				label lblComment "" align: #left
 			)
 			
-			group "Please Check Next Issues" (
-				checkbox cbxModelUngroupped "No groups in scene (Explode groups)" align: #left enabled: false
-				checkbox cbxOneModelInScene "One model in the scene" align: #left enabled: false
-				checkbox cbxModelInFront "Model correct rotated in front view" align: #left enabled: false
-				checkbox cbxLogicalAttached "Model logically attached (Explode groups first!)" align: #left enabled: false
-				checkbox cbxCentered "Model centered" align: #left enabled: false
-				checkbox cbxCorrectPivot "Model has proper Pivot" align: #left enabled: false
-				checkbox cbxMeshSmooth "Model MeshSmoothed" align: #left enabled: false
-				checkbox cbxNoModifiers "Model without modifiers" align: #left enabled: false
-				checkbox cbxAsEditableMesh "Model as Editable Mesh" align: #left enabled: false
+			group "Custom Scene Coversion Options" (
+				checkbox cbxKillTiling "Kill Tex Tiling and Apply UVW XForm" align: #left enabled: false
 			)
 			
 			button btnSave "Save Scene" width: 254 height: 35 enabled: false
 			button btnPrev "<< Prev." across: 2 width: 120 align: #left offset: [0, 10] enabled: false
 			button btnNext "Next >>"  width: 120 align: #right offset: [0, 10] enabled: false
 			
-			group "Danger Zone" (
-				button btnRemoveExistingFolder "Remove Existing Folder (With Scene)" width: 254 enabled: false
-				checkbox cbxAgreeRemoveExistingFolder "I agree to remove existing folder" align: #left
-			)
-			
-			local modelChecks = #(
-				cbxModelUngroupped,
-				cbxOneModelInScene,
-				cbxModelInFront,
-				cbxLogicalAttached,
-				cbxCentered,
-				cbxCorrectPivot,
-				cbxMeshSmooth,
-				cbxNoModifiers,
-				cbxAsEditableMesh				
-			)
-			
 			local current = undefined
+			
+			fn polyCount s = (
+				local iPoly = 0
+				local iVert = 0
+				
+				local a = for i in s collect (getPolygonCount i)
+				for i in a do (
+					iPoly += i[1]
+					iVert += i[2]
+				)
+				
+				return #(iPoly, iVert)
+			)
+			
+			fn formatNumberWithSpaces n = (
+				local numberStr = (n as string)
+				local s = ""
+				local len = numberStr.count
+				
+				for i in 1 to len do	(
+					s = numberStr[len - i + 1] + s
+					if (mod i 3 == 0 and i != len) do (
+						s = " " + s
+					)
+				)
+				
+				return s
+			)
 			
 			fn formatString s v: #() tag: "$" = (
 				for i in 1 to v.count  do (
@@ -2707,27 +2729,25 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				setINISetting current.ini "index" k (v as string)
 			)
 			
-			fn loadChecks = (
-				for c in modelChecks do (
-					c.checked = (getter c.name) == "true"
-					c.enabled = true
-				)
-			)
-			
-			fn saveChecks = (
-				for c in modelChecks do (
-					setter (c.name) c.checked					
-				)
-			)
-			
 			fn updateUI = (
 				if (current == undefined) do return false				
 				local n = current.name				
 				local isChecked = (getter "checked") == "true"
 				local isCheckedText = if (isChecked) then "Yes" else "No"
+				local comment = _rBatchGCGLBConverter.getComment current.id
+				local polys = polyCount objects
 				
 				lblName.caption = formatString "Name: $1" v: #(n)
 				lblIsChecked.caption = formatString "Is Checked: $1" v: #(isCheckedText)
+				lblStatus.caption = formatString "Status: $1" v: #(current.approve)
+				if (current.approve == "Skip") do (
+					lblComment.caption = formatString "Comment: $1" v: #(comment)  
+				)
+				
+				local polysStr = formatString "Polys: $1" v: #(formatNumberWithSpaces polys[1])  
+				 
+				if (polys[1] > 250000) do polysStr = polysStr + " [!]"
+				lblPolys.caption = polysStr
 				
 				boost()
 			)
@@ -2782,6 +2802,19 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				return s
 			)
 			
+			fn loadChecks = (
+				local o1 = getter "kill_tiling"
+				cbxKillTiling.checked = o1 == "true"
+			)
+			
+			fn enableBackFaceCull = (
+				for i in objects do try (i.backfacecull = true) catch ()
+			)
+			
+			on cbxKillTiling changed a do (
+				setter "kill_tiling" a
+			)
+			
 			on _rBatchGCGLBChecker open do (
 				setPos()
 				
@@ -2829,48 +2862,25 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					splitFiles()
 				)*/
 				
+				loadChecks()
+				
 				max tool zoomextents
 				max tool maximize
 				max views redraw
 				max unfreeze all
 				max unhide all
+				enableBackFaceCull()
 				
 				updateUI()
 				
-				loadChecks()
-				
 				btnSave.enabled = true
+				cbxKillTiling.enabled = true
 				
 				try (::_rBatchGCGLBConverter.updateLbx()) catch ()
 			)
 			
 			on _rBatchGCGLBChecker moved p do (
 				setPos()
-			)
-			
-			on cbxAgreeRemoveExistingFolder changed v do (
-				btnRemoveExistingFolder.enabled = v
-			)
-			
-			on btnRemoveExistingFolder pressed do (
-				if (current == undefined) do (
-					return btnRemoveExistingFolder.enabled = false
-				)
-				
-				local q = queryBox "Are you sure want to delete Existing folder with model?" title: "Confirm?"
-				if (not q) do return false
-				
-				try (resetMaxFile #noprompt) catch ()
-				
-				local cmd = "rmdir /s /q \"" +  current.extractPath  + "\""				
-				HiddenDOSCommand cmd
-				
-				try (::_rBatchGCGLBConverter.delApproveStatus current.id current.glb) catch ()
-				try (::_rBatchGCGLBConverter.delApproveStatus current.id current.blnd) catch ()
-				
-				try (::_rBatchGCGLBConverter.updateLbx()) catch ()
-				
-				try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
 			)
 			
 			on btnNext pressed do (
@@ -2892,10 +2902,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				if (id == 0 or id == undefined) do try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
 				
-				saveChecks()
 				saveMaxFile (maxFilePath + maxFileName)
 				setter "checked" "true"
 				
+				loadChecks()
 				updateUI()
 				try (::_rBatchGCGLBConverter.updateLbx()) catch ()
 				
@@ -2903,7 +2913,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			)
 		)
 		
-		CreateDialog _rBatchGCGLBChecker 280 440
+		CreateDialog _rBatchGCGLBChecker 280 255
 	)
 
 	rollout _rBatchGCGLBConverter "GLB Converter" category: 1 (
@@ -3027,6 +3037,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			return (getINISetting ini "index" "checked") == "true"
 		)
 		
+		fn getKillTiling ini = (
+			return (getINISetting ini "index" "kill_tiling") == "true"
+		)
+		
 		fn getMask f = (
 			f = getFilenameFile f
 			f = trimLeft f "0123456789-"
@@ -3049,7 +3063,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		fn setApproveStatus id f status: #skip = (
 			if (status != #skip and not doesFileExist f) do status = #error
 			
-			local os = getApproveStatus id f
+			--local os = getApproveStatus id f
 			
 			local ini = ::BATCH_GLB_PROCESSED_DIR + id + ".ini"
 			local n = getMask f
@@ -3060,9 +3074,37 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				default: ""
 			)
 			
-			if (os == s) do s = ""
+			--if (os == s) do s = ""
 			
 			setINISetting ini "FILES" n s
+		)
+		
+		fn getComment id = (
+			local ini = ::BATCH_GLB_PROCESSED_DIR + id + ".ini"
+			
+			return getINISetting ini "DATA" "comment"
+		)
+		
+		fn setComment id c = (
+			local ini = ::BATCH_GLB_PROCESSED_DIR + id + ".ini"
+			
+			local replaces = #(
+				#("\"", ""),
+				#("'", ""),
+				#("&", ""),
+				#("=", ""),
+				#("`", ""),
+				#("\n", " "),
+				#("\r\n", " "),
+				#("\t", " "),
+				#("   ", " "),
+				#("  ", " ")
+			)
+			for i in replaces do c = substituteString c i[1] i[2]
+			
+			c = trimLeft (trimRight c " \t") " \t"
+			
+			setINISetting ini "DATA" "comment" c
 		)
 		
 		fn getData = (
@@ -3096,7 +3138,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				blendScreen,
 				approve,
 				isApprove,
-				iniProcessed
+				iniProcessed,
+				isNormalizeTiling
 			)
 			
 			local badPattern = #("*-BLEND", "*-FBX-OBJ", "*-MaxMerger", "*-MaxOriginal")
@@ -3129,6 +3172,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				local filename = f				
 				
 				local isChecked = getChecked ini
+				local isNormalizeTiling = getKillTiling ini
 				--local isSplitted = splitterMgr.isSplitted()
 				
 				local isGlbExist = doesFileExist glb
@@ -3161,7 +3205,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					blendScreen: blendScreen \
 					approve: approve \
 					isApprove: isApprove \
-					iniProcessed: iniProcessed
+					iniProcessed: iniProcessed \
+					isNormalizeTiling: isNormalizeTiling
 				)
 			)
 			
@@ -3194,7 +3239,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			btnCheckArchive.enabled = isOneSelected							
 			btnQA.enabled = isOneSelected and ss[1].isGlbExist
 			btnStatusApprove.enabled = isAtleastOneSelected
-			btnStatusSkip.enabled = isAtleastOneSelected
+			btnStatusSkip.enabled = isOneSelected
 			
 			btnDownload.enabled = isSetSyncFolder	
 			btnUpload.enabled = isSetSyncFolder and isProcessedFilesExists
@@ -3351,7 +3396,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				r.del = undefined
 				r.opened = true
 				
-				local glb = ::API_BATCH_GLB_CONVERTER.run scn: r out: outPath ao: ao
+				local glb = ::API_BATCH_GLB_CONVERTER.run scn: r out: outPath ao: ao isNormalizeTiling: f.isNormalizeTiling
 				
 				if (getProgressCancel() or keyboard.escPressed) do return false
 				
@@ -3417,7 +3462,81 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		
 		on btnQA pressed do startQA()
 		on btnStatusApprove pressed do setModelStatus status: #approve
-		on btnStatusSkip pressed do setModelStatus status: #skip
+			
+		on btnStatusSkip pressed do (
+			local items = getSelectedItems()
+			if (items.count == 0) do return false
+			if (items.count != 1) do return messageBox "Please select only one item from list!" title: "Warning!"
+			
+			global _BATCH_REASONS = #(
+				"",
+				"100. Very polygonal model",
+				"101. Wrong UVW Mapping",
+				"102. Wrong UVW Tiling",
+				"103. The model explodes after XForm",
+				"104. Poorly baked Textures / Materials",
+				"105. Set of assets / Many different objects",
+				"106. The model is not convertible"
+			)
+			
+			global skipCancelled = false
+			
+			try (DestroyDialog _rSendCommend) catch ()
+			rollout _rSendCommend "Comment" (
+				group "Skip Reason" (
+					edittext edtComment "" height: 50
+				)
+				group "Or Choose from Predefined Reasons" (
+					listbox lbxReasons "" items: ::_BATCH_REASONS
+				)
+				button btnSave "Save" width: 70 height: 25 align: #right offset: [100, 20] across: 2
+				button btnCancel "Cancel" width: 70 height: 25 align: #right offset: [0, 20]
+				
+				on edtComment entered a do (
+					btnSave.pressed()
+				)
+				
+				on btnCancel pressed do (
+					/*if (edtComment.text.count < 1) do (
+						_rBatchGCGLBConverter.setModelStatus status: #none
+					)*/
+					try (DestroyDialog _rSendCommend) catch ()					
+				)
+				
+				on btnSave pressed do (
+					if (edtComment.text.count < 1) do return messageBox "Please enter Skip Reason!" title: "Error!"
+					
+					--_rBatchGCGLBConverter.getComment
+					--_rBatchGCGLBConverter.setComment
+					
+					local items = _rBatchGCGLBConverter.getSelectedItems()
+					
+					for i in items do (
+						_rBatchGCGLBConverter.setComment i.id edtComment.text
+					)
+					
+					_rBatchGCGLBConverter.setModelStatus status: #skip
+					
+					try (DestroyDialog _rSendCommend) catch ()
+				)
+				
+				on _rSendCommend open do (
+					setFocus edtComment
+					lbxReasons.selection = 0
+					local items = _rBatchGCGLBConverter.getSelectedItems()
+					if (items.count == 1) do (
+						edtComment.text = _rBatchGCGLBConverter.getComment items[1].id
+					)
+				)
+				
+				on lbxReasons selected a do (
+					edtComment.text = lbxReasons.selected
+					setFocus edtComment
+				)				
+			)
+			
+			CreateDialog _rSendCommend width: 380 height: 323 style: #(#style_toolwindow)			
+		)
 		
 		on lbxList rightClick do (
 			struct rc (
