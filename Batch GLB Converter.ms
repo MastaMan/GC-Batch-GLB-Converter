@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.2.4
+VERSION=1.2.5
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -130,6 +130,11 @@ Script for bulk conversion models to GLB=
 * Changed: Redesigned Scene Info dialog=
 - BugFix: Poor baking Falloff=
 - BugFix: Huge bump, clamp to 0.2=
+
+[1.2.5]
++ Added: Quick Export button=
++ Added: Set visible maps after opening scene=
++ Added: Tooltips=
 
 [FILES]
 Install.mcr=
@@ -2811,6 +2816,20 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				for i in objects do try (i.backfacecull = true) catch ()
 			)
 			
+			fn setMapsVisible = (
+				local classes = #(
+					CoronaPhysicalMtl,
+					CoronaLegacyMtl,
+					VRayMtl
+				)
+				
+				for c in classes where c != undefined do (
+					for i in getClassinstances c do (
+						try (showTextureMap i true) catch ()
+					)	
+				)
+			)
+			
 			on cbxKillTiling changed a do (
 				setter "kill_tiling" a
 			)
@@ -2870,6 +2889,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				max unfreeze all
 				max unhide all
 				enableBackFaceCull()
+				setMapsVisible()
 				
 				updateUI()
 				
@@ -2918,7 +2938,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 
 	rollout _rBatchGCGLBConverter "GLB Converter" category: 1 (
 		group "Sync Amazon Folder" (
-			edittext edtInputPath "" readonly: true across: 2 align: #left fieldwidth: 215 height: 22		
+			edittext edtInputPath "" readonly: true across: 2 align: #left fieldwidth: 215 height: 22 tooltip: "Select a folder to download models"	
 			button btnSearchInputPath "..." width: 35 height: 24  align: #right offset: [0, -1]		
 		)
 		group "Files List (*.zip)" (
@@ -2929,25 +2949,26 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		)
 		
 		group "1. Download from DB" (
-			button btnDownload "Download Models" height: 24 width: 260
+			button btnDownload "Download Models" height: 24 width: 260 tooltip: "Download all models from the current queue"	
 		)
 		
 		group "2. Moderate Archives" (
-			button btnCheckArchive "Check Archive" width: 260 height: 24
+			button btnCheckArchive "Check Archive" width: 260 height: 24 tooltip: "Check the model for errors:\n- No groups\n- Only one logical model (Attached)\n- Centered and grounded\n- Reasonable amount of polygons\n- Correct mapping"
 		)
 		
 		group "3. Export to Other Formats" (
-			button btnBatchExport "Batch Export Selected (0)" height: 24 width: 260
+			button btnBatchExport "Batch Export Selected (0)" height: 24 width: 175 across: 2 align: #left tooltip: "Converts to GLB all Checked and selected models from list"
+			button btnQuickExport "Quick Export" align: #right height: 24 tooltip: "Converts to GLB without baking AO and converting to Blender"
 		)
 		
 		group "4. Quality Assurance" (
-			button btnQA "QA GLB + Preview" height: 24 width: 260
-			button btnStatusApprove "Status: Approve" across: 2 height: 24 width: 125 align: #left
-			button btnStatusSkip "Status: Skip" height: 24 width: 125 align: #right
+			button btnQA "QA GLB + Preview" height: 24 width: 260 tooltip: "Conversion quality assessment"
+			button btnStatusApprove "Status: Approve" across: 2 height: 24 width: 125 align: #left tooltip: "Approve models"
+			button btnStatusSkip "Status: Skip" height: 24 width: 125 align: #right tooltip: "Skip models"
 		)
 		
 		group "5. Upload to DB" (
-			button btnUpload "Upload All Models " height: 24 width: 260
+			button btnUpload "Upload All Models " height: 24 width: 260 tooltip: "Uploads all models into the Database, if all statuses are set: Approve or Skip and all generated files exists (GLB, BLEND)"
 		)
 		
 		global BATCH_GLB_CONVERTER_FILES = #()
@@ -3236,10 +3257,11 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			btnBatchExport.enabled = isAtleastOneSelected and checkedCnt != 0
 			lblStatus.caption = formatString "Ready to Export: $1 | Total Items: $2" v: #(checkedCnt, lbxList.items.count)
 			btnBatchExport.caption = formatString "Batch Export Selected ($1/$2)" v: #(checkedInSel, ss.count)
-			btnCheckArchive.enabled = isOneSelected							
+			btnCheckArchive.enabled = isOneSelected
 			btnQA.enabled = isOneSelected and ss[1].isGlbExist
 			btnStatusApprove.enabled = isAtleastOneSelected
 			btnStatusSkip.enabled = isOneSelected
+			btnQuickExport.enabled = isAtleastOneSelected and checkedCnt != 0
 			
 			btnDownload.enabled = isSetSyncFolder	
 			btnUpload.enabled = isSetSyncFolder and isProcessedFilesExists
@@ -3320,7 +3342,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			return p += @"\"
 		)
 		
-		fn startBatchExport = (
+		fn startBatchExport type: #default = (
 			local ss = getSelectedItems()
 			ss = for i in ss where i.isChecked and i.approve != "Skip" collect i
 			
@@ -3348,6 +3370,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			struct AO_Settings (enabled, passes, resolution, denoise, size, type)
 			ao = AO_Settings()
 			ao.enabled = ::_rBatchGCGLBConverterSettings.cbxUseCoronaAO.checked or ::_rBatchGCGLBConverterSettings.cbxUseXNormalAO.checked
+			if (type == #quick) do ao.enabled = false
 			
 			if (::_rBatchGCGLBConverterSettings.cbxUseCoronaAO.checked) do (
 				ao.size = (::_rBatchGCGLBConverterSettings.spnAOSize.value as string) + "cm"
@@ -3401,13 +3424,15 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				if (getProgressCancel() or keyboard.escPressed) do return false
 				
 				-- Bender
-				if (::_rBatchGCGLBConverterSettings.cbxMakeBlend.checked) do (					
-					blendGLBMgr.init glb: glb name: f.blendName
-					blendGLBMgr.convertGLB2Blend()
-					--blendGLBMgr.makeScreenshot()
-					blendGLBMgr.makeRender()
-					blendGLBMgr.makeArchive()
-					blendGLBMgr.makeJson()					
+				if (type == #default) do (
+					if (::_rBatchGCGLBConverterSettings.cbxMakeBlend.checked) do (					
+						blendGLBMgr.init glb: glb name: f.blendName
+						blendGLBMgr.convertGLB2Blend()
+						--blendGLBMgr.makeScreenshot()
+						blendGLBMgr.makeRender()
+						blendGLBMgr.makeArchive()
+						blendGLBMgr.makeJson()					
+					)
 				)
 				
 				if (getProgressCancel() or keyboard.escPressed) do return false
@@ -3759,6 +3784,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		)
 		
 		on btnBatchExport pressed do startBatchExport()
+		on btnQuickExport pressed do startBatchExport type: #quick
 	)
 	
 	rollout _rBatchGCGLBConverterSettings "Settings" category: 2 (
