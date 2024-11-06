@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.2.6
+VERSION=1.2.7
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -138,6 +138,9 @@ Script for bulk conversion models to GLB=
 
 [1.2.6]
 - BugFix: Alpha tiling=
+
+[1.2.7]
++ Added: Set visible maps when pressing Save Scene=
 
 [FILES]
 Install.mcr=
@@ -2936,6 +2939,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				loadChecks()
 				updateUI()
+				setMapsVisible()
 				try (::_rBatchGCGLBConverter.updateLbx()) catch ()
 				
 				lbx.selection = id			
