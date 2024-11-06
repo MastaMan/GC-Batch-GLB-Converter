@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.2.5
+VERSION=1.2.6
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -135,6 +135,9 @@ Script for bulk conversion models to GLB=
 + Added: Quick Export button=
 + Added: Set visible maps after opening scene=
 + Added: Tooltips=
+
+[1.2.6]
+- BugFix: Alpha tiling=
 
 [FILES]
 Install.mcr=
@@ -1691,7 +1694,7 @@ struct BatchGLBConverterWrapper (
 	fn renderTexturesQueue = (			
 		for t in this.texturesQueue do (
 			if (classOf t[1] == Bitmaptexture) then (
-				local b = cacheBitmap t[1]			
+				local b = cacheBitmap t[1]
 				for i in t where i != undefined and b != undefined do replaceInstances i b
 			) else if (t[1] != undefined) then (
 				this.renderTargetMap t[1] isReplace: true type: #jpg
@@ -1928,7 +1931,13 @@ struct BatchGLBConverterWrapper (
 			
 			-- Opacity
 			if (i.opacityTexmap != undefined) do (
-				nm.AlphaMap = i.opacityTexmap
+				-- Force bake Alpha (Tiling not supported)
+				local cc = Color_Correction()
+				-- Invert
+				cc.rewireMode = 2
+				cc.map = i.opacityTexmap
+				nm.AlphaMap = cc
+				this.addTextureToQueue cc
 				nm.alphaMode = 2
 			)
 			
