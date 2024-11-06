@@ -179,6 +179,7 @@ contrast.bat=
 /*
 	TODO: 
 	Transluency -> Transmission
+	CoronaSkin -> CoronaPhysicalMtl
 
 */
 
@@ -1810,67 +1811,74 @@ struct BatchGLBConverterWrapper (
 		for o in objects do (
 			if (not isValidNode o or isDeleted o or not (canConvertTo o Editable_Mesh) or classOf o.material == undefined) do continue
 			
-			local normalizeBitmaps = #()
-			local normalizeValues = #()
-			local normalizeOffsets = #()
+			global normalizeBitmaps = #()
+			global normalizeValues = #()
+			global normalizeOffsets = #()
 			
-			if (classOf o.material == Multimaterial) do (
+			fn normalizeMaterialTiling m o id = (
+				local bb = getClassInstances Bitmaptexture target: m
+				if (bb.count == 0) do continue
+				local isRealWorld = try(bb[1].coords.realWorldScale == true) catch (false)
+				
+				try (bb[1].coords.realWorldScale = false) catch ()
+				local u = bb[1].coords.U_Tiling as float
+				local v = bb[1].coords.V_Tiling as float
+				local uOffset = bb[1].coords.U_Offset as float
+				local vOffset = bb[1].coords.V_Offset as float
+				
+				if (u == 1.0 and v == 1.0) do continue
+				
+				local moVolSelect = Vol__Select()
+				moVolSelect.level = 2
+				moVolSelect.volume = 5
+				moVolSelect.matID = id
+				addModifier o moVolSelect
+				
+				local modUvwXForm = UVW_Xform()
+				modUvwXForm.U_Tile = u
+				modUvwXForm.V_Tile = v
+				modUvwXForm.U_Offset = uOffset
+				modUvwXForm.V_Offset = vOffset
+				addModifier o modUvwXForm
+				
+				for b in bb do (
+					try (b.coords.realWorldScale = false) catch ()
+					
+					if (appendifUnique normalizeBitmaps b) do (
+						local _u = b.coords.U_Tiling / u
+						local _v = b.coords.V_Tiling / v
+						local _uOffset = b.coords.U_Offset - uOffset
+						local _vOffset = b.coords.V_Offset - vOffset
+						
+						append normalizeValues #(_u, _v)
+						append normalizeOffsets #(_uOffset, _vOffset)
+					)
+					
+					--b.coords.U_Tiling = b.coords.U_Tiling / u
+					--b.coords.V_Tiling = b.coords.V_Tiling / v
+				)
+			)
+			
+			if (classOf o.material == Multimaterial) then (
 				for id in o.material.materialIDList do (
 					local m = o.material.materialList[id]
 					if (m == undefined) do continue
-					local bb = getClassInstances Bitmaptexture target: m
-					if (bb.count == 0) do continue
-					local isRealWorld = try(bb[1].coords.realWorldScale == true) catch (false)
 					
-					try (bb[1].coords.realWorldScale = false) catch ()
-					local u = bb[1].coords.U_Tiling as float
-					local v = bb[1].coords.V_Tiling as float
-					local uOffset = bb[1].coords.U_Offset as float
-					local vOffset = bb[1].coords.V_Offset as float
-					
-					if ((u == 1.0 and v == 1.0) or (uOffset == 0 and vOffset == 0)) do continue
-					
-					local moVolSelect = Vol__Select()
-					moVolSelect.level = 2
-					moVolSelect.volume = 5
-					moVolSelect.matID = id
-					addModifier o moVolSelect
-					
-					local modUvwXForm = UVW_Xform()
-					modUvwXForm.U_Tile = u
-					modUvwXForm.V_Tile = v
-					modUvwXForm.U_Offset = uOffset
-					modUvwXForm.V_Offset = vOffset
-					addModifier o modUvwXForm
-					
-					for b in bb do (
-						try (b.coords.realWorldScale = false) catch ()
-						
-						if (appendifUnique normalizeBitmaps b) do (
-							local _u = b.coords.U_Tiling / u
-							local _v = b.coords.V_Tiling / v
-							local _uOffset = b.coords.U_Offset - uOffset
-							local _vOffset = b.coords.V_Offset - vOffset
-							
-							append normalizeValues #(_u, _v)
-							append normalizeOffsets #(_uOffset, _vOffset)
-						)
-						
-						--b.coords.U_Tiling = b.coords.U_Tiling / u
-						--b.coords.V_Tiling = b.coords.V_Tiling / v
-					)
-				)
-				
-				for i in 1 to normalizeBitmaps.count do (
-					local b = normalizeBitmaps[i]
-					b.coords.U_Tiling = normalizeValues[i][1]
-					b.coords.V_Tiling = normalizeValues[i][2]
-					b.coords.U_Offset = normalizeOffsets[i][1]
-					b.coords.V_Offset = normalizeOffsets[i][2]
-				)
-				
-				convertToMesh o
+					normalizeMaterialTiling m o id
+				)								
+			) else (
+				normalizeMaterialTiling o.material o 1
 			)
+			
+			for i in 1 to normalizeBitmaps.count do (
+				local b = normalizeBitmaps[i]
+				b.coords.U_Tiling = normalizeValues[i][1]
+				b.coords.V_Tiling = normalizeValues[i][2]
+				b.coords.U_Offset = normalizeOffsets[i][1]
+				b.coords.V_Offset = normalizeOffsets[i][2]
+			)
+			
+			convertToMesh o
 		)
 	),
 	
@@ -2024,6 +2032,9 @@ struct BatchGLBConverterWrapper (
 				nm.sheenRoughnessMap = i.sheenRoughnessTexmap
 				this.addTextureToQueue nm.sheenRoughnessMap
 			)
+			
+			-- Force Clamp Roughness
+			if (nm.roughness > 0.75) do nm.roughness = 0.75
 			
 			-- Force set prams for specific presets
 			if (preset == #cloth) do (
