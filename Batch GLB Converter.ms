@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.2.7
+VERSION=1.2.9
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -142,6 +142,14 @@ Script for bulk conversion models to GLB=
 [1.2.7]
 + Added: Set visible maps when pressing Save Scene=
 
+[1.2.9]
++ Added: neutralizeBlendMtl funciton=
++ Added: neutralizeNoise funciton=
++ Added: neutralizeCoronaSkinMtl funciton=
++ Added: setVrayMtlFogColorToDiffuse funciton=
++ Added: Turn on doubleSided option in GLTF Material=
++ Added: Glass preset for changing standard (bad) glass=
+
 [FILES]
 Install.mcr=
 jpegoptim.exe=
@@ -179,7 +187,6 @@ contrast.bat=
 /*
 	TODO: 
 	Transluency -> Transmission
-	CoronaSkin -> CoronaPhysicalMtl
 
 */
 
@@ -1790,9 +1797,37 @@ struct BatchGLBConverterWrapper (
 		)		 
 	),
 	
+	fn neutralizeNoise = (
+		for i in getClassInstances Noise do (
+			i.color1 = gray
+			i.color2 = gray
+		)
+	),
+	
+	fn neutralizeCoronaSkinMtl = (
+		for i in getClassInstances CoronaSkinMtl do (
+			local nm = CoronaPhysicalMtl()			
+			nm.name = i.name
+			nm.baseColor = i.skinColor
+			nm.baseRoughness = 1.0 - i.reflection1Glossiness
+			nm.baseIor = i.reflection1Ior
+			
+			replaceInstances i nm
+		)
+	),
+	
 	fn neutralizeCoronaLayered = (
 		for i in getClassInstances CoronaLayeredMtl do (
 			local nm = i.baseMtl
+			nm.name = i.name
+			
+			replaceInstances i nm
+		)
+	),
+	
+	fn neutralizeBlendMtl = (
+		for i in getClassInstances Blend do (
+			local nm = i.map1
 			nm.name = i.name
 			
 			replaceInstances i nm
@@ -1804,6 +1839,13 @@ struct BatchGLBConverterWrapper (
 			i.texmapOccluded = i.texmapUnoccluded
 			i.colorOccluded = color 128 128 128
 			i.colorUnoccluded = i.colorOccluded 
+		)
+	),
+	
+	fn setVrayMtlFogColorToDiffuse = (
+		for i in getClassInstances VRayMtl do (
+			if (i.refraction_fogColor == white and i.Refraction != black) do continue
+			i.Diffuse = i.refraction_fogColor
 		)
 	),
 	
@@ -1905,15 +1947,24 @@ struct BatchGLBConverterWrapper (
 		return c
 	),
 	
+	fn isGlass i = (		
+		if (i.refractionAmount >= 0.75 and i.baseRoughness < 0.5) do return true
+		if (MatchPattern i.name pattern: "*glass*") do return true
+		return false
+	),
+	
 	fn coronaPhysicalMtlToGltfMaterial falloffMaterials: #() = (			
 		for i in getClassInstances CoronaPhysicalMtl do (
+			i.roughnessMode = 0
 			local nm = glTFMaterial()
 			nm.name = i.name
+			nm.DoubleSided = true
 			
 			local isUsedFalloff = (findItem falloffMaterials i) != 0
 			local preset = #none
 			
 			if (isUsedFalloff) do preset = #cloth
+			if (this.isGlass i) do preset = #glass			
 			
 			-- Diffuse				
 			if (i.baseTexmap != undefined) then (
@@ -1945,7 +1996,7 @@ struct BatchGLBConverterWrapper (
 				-- Force bake Alpha (Tiling not supported)
 				local cc = Color_Correction()
 				-- Invert
-				cc.rewireMode = 2
+				--cc.rewireMode = 2
 				cc.map = i.opacityTexmap
 				nm.AlphaMap = cc
 				this.addTextureToQueue cc
@@ -2046,6 +2097,23 @@ struct BatchGLBConverterWrapper (
 					nm.sheenColor = color 65 65 65
 					nm.metalness = 0
 				)
+			)
+			
+			if (preset == #glass) do (
+				nm.roughness = 0.15
+				nm.DoubleSided = true
+				nm.enableClearCoat = true
+				nm.clearcoat = 1
+				nm.clearcoatRoughness = 1
+				nm.enableSheen = true
+				nm.sheenRoughness = 0.3
+				nm.sheenColor = color 255 255 255 255
+				nm.indexOfRefraction = 20
+				nm.AlphaMap = ColorMap()
+				nm.AlphaMap.solidcolor = color 110 110 110
+				nm.alphaMode = 3
+				
+				this.addTextureToQueue nm.AlphaMap
 			)
 			
 			
@@ -2454,6 +2522,9 @@ struct BatchGLBConverterWrapper (
 		this.fixGeometry()
 		this.attachObjectsByMaterials()
 		
+		-- Save Fog color before conversion to Corona
+		this.setVrayMtlFogColorToDiffuse()
+		
 		-- Purge cache
 		this.clearCacheMapsDir()
 		
@@ -2469,7 +2540,10 @@ struct BatchGLBConverterWrapper (
 		this.neutralizeFalloff()
 		this.neutralizeCoronaAO()
 		this.neutralizeRaySwitch()
+		this.neutralizeCoronaSkinMtl()
 		this.neutralizeCoronaLayered()
+		this.neutralizeNoise()
+		this.neutralizeBlendMtl()
 		this.neutralizeDoubleSided()
 		
 		-- Convert to GLTF Material
