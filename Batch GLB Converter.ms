@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.2.9
+VERSION=1.3.0
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -149,6 +149,9 @@ Script for bulk conversion models to GLB=
 + Added: setVrayMtlFogColorToDiffuse funciton=
 + Added: Turn on doubleSided option in GLTF Material=
 + Added: Glass preset for changing standard (bad) glass=
+
+[1.3.0]
++ Added: Setting Download Queue Quantity=
 
 [FILES]
 Install.mcr=
@@ -1145,8 +1148,9 @@ struct GCUploaderWrapper (
 
 struct GCDownloaderWrapper (
 	currentPath = getFileNamePath (getThisScriptFileName()),
-	prod = "https://greatcatalog.net/api/get-version-for-conversion.php?key=prodJq8PsdWdf34ffFtoMa698aidf22",
-	test = "https://t2.greatcatalog.net/api/get-version-for-conversion.php?key=iddqD2024IFjodtoMa63ta45fsdaf23",
+	count = 30,
+	prod = "https://greatcatalog.net/api/get-version-for-conversion.php?key=prodJq8PsdWdf34ffFtoMa698aidf22&count=",
+	test = "https://t2.greatcatalog.net/api/get-version-for-conversion.php?key=iddqD2024IFjodtoMa63ta45fsdaf23&count=",
 	cred = prod,
 	data = "",
 	downloadDir = "",
@@ -1205,8 +1209,9 @@ struct GCDownloaderWrapper (
 		return for i in ff collect (getFilenameFile f)
 	),
 	fn run = (
-		this.data = this.getRequest this.cred
-
+		local u = cred + (count as string)
+		this.data = this.getRequest u
+		
 		if (this.data == undefined) do return messageBox "Unable to retrieve data from the server!" title: "Error!"
 		local dd = FilterString this.data "\n"
 		local errors = #()
@@ -1295,10 +1300,11 @@ struct GCDownloaderWrapper (
 			return messageBox m title: "Success!"
 		)
 	),
-	fn init downloadDir mode: #prod = (
+	fn init downloadDir mode: #prod count: 30 = (
 		if (mode == #test) do this.cred = this.test
 		makeDir downloadDir all: true
 		this.downloadDir = downloadDir
+		this.count = count
 	)
 )
 
@@ -3563,8 +3569,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		
 		on btnDownload pressed do (
 			local downloadMgr = GCDownloaderWrapper()
-			downloadMgr.init (edtInputPath.text) mode: (::BATCH_GLB_MODE)
+			local count = ::_rBatchGCGLBConverterSettings.spnDownloadQueueQuantity.value
+			downloadMgr.init (edtInputPath.text) mode: (::BATCH_GLB_MODE) count: count
 			downloadMgr.run()
+			
 			updateLbx()
 		)
 		
@@ -3891,6 +3899,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			checkbutton cbxModeTest "Testing" highlightColor: (color 186 169 55) width: 122
 		)
 		
+		group "Download Queue Quantity" (
+			spinner spnDownloadQueueQuantity "Count: " range: [1, 200, 30] type: #integer fieldwidth: 50 align: #left
+		)
+		
 		group "AO Settings" (
 			checkbox cbxUseCoronaAO "Use Corona AO"
 			
@@ -3951,6 +3963,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			local r2 = '*'.get "spnAOXNormalResolution" type: #int
 			spnAOXNormalResolution.value = if (r2 != 0) then r2 else 1024
 			
+			local q1 = '*'.get "spnDownloadQueueQuantity" type: #int
+			spnDownloadQueueQuantity.value = if (q1 != 0) then q1 else 30
+			
 			cbxAODenoise.checked = '*'.get "cbxAODenoise" type: #bool_false
 			cbxUseCoronaAO.checked = '*'.get "cbxUseCoronaAO" type: #bool_false
 			cbxUseXNormalAO.checked = '*'.get "cbxUseXNormalAO" type: #bool_true
@@ -3977,6 +3992,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			cbxAODenoiseXNormal.enabled = isUseXNormalAOGroupEnabled			
 		)
 		
+		on spnDownloadQueueQuantity changed v do '*'.add  "spnDownloadQueueQuantity" v
 		on spnAOPasses changed v do '*'.add  "spnAOPasses" v
 		on spnAOSize changed v do '*'.add  "spnAOSize" v
 		on spnAOResolution changed v do '*'.add  "spnAOResolution" v
