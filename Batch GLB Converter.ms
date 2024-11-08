@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.3.0
+VERSION=1.3.1
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -152,6 +152,9 @@ Script for bulk conversion models to GLB=
 
 [1.3.0]
 + Added: Setting Download Queue Quantity=
+
+[1.3.1]
++ Added: Button Status: None=
 
 [FILES]
 Install.mcr=
@@ -3067,8 +3070,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		
 		group "4. Quality Assurance" (
 			button btnQA "QA GLB + Preview" height: 24 width: 260 tooltip: "Conversion quality assessment"
-			button btnStatusApprove "Status: Approve" across: 2 height: 24 width: 125 align: #left tooltip: "Approve models"
-			button btnStatusSkip "Status: Skip" height: 24 width: 125 align: #right tooltip: "Skip models"
+			button btnStatusApprove "Status: Approve" across: 3 height: 24 width: 82 align: #left tooltip: "Approve models"
+			button btnStatusNone "Status: None" height: 24 width: 82 align: #center tooltip: "Set status None"
+			button btnStatusSkip "Status: Skip" height: 24 width: 82 align: #right tooltip: "Skip models"
 		)
 		
 		group "5. Upload to DB" (
@@ -3186,7 +3190,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		)
 		
 		fn setApproveStatus id f status: #skip = (
-			if (status != #skip and not doesFileExist f) do status = #error
+			if (status != #skip and status != #none and not doesFileExist f) do status = #error
 			
 			--local os = getApproveStatus id f
 			
@@ -3196,6 +3200,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				#skip: "Skip"
 				#error: "Error"
 				#approve: "Approve"
+				#none: ""
 				default: ""
 			)
 			
@@ -3363,6 +3368,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			btnBatchExport.caption = formatString "Batch Export Selected ($1/$2)" v: #(checkedInSel, ss.count)
 			btnCheckArchive.enabled = isOneSelected
 			btnQA.enabled = isOneSelected and ss[1].isGlbExist
+			btnStatusNone.enabled = isAtleastOneSelected
 			btnStatusApprove.enabled = isAtleastOneSelected
 			btnStatusSkip.enabled = isOneSelected
 			btnQuickExport.enabled = isAtleastOneSelected and checkedCnt != 0
@@ -3593,6 +3599,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		
 		on btnQA pressed do startQA()
 		on btnStatusApprove pressed do setModelStatus status: #approve
+		on btnStatusNone pressed do setModelStatus status: #none
 			
 		on btnStatusSkip pressed do (
 			local items = getSelectedItems()
