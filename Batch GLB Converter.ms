@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.3.2
+VERSION=1.3.3
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -158,6 +158,10 @@ Script for bulk conversion models to GLB=
 
 [1.3.2]
 + Added: If not foudn blend file and status Approve displays [Not found Blender file] status=
+
+
+[1.3.3]
+- BugFix: Exception for Normal maps=
 
 [FILES]
 Install.mcr=
@@ -1706,10 +1710,10 @@ struct BatchGLBConverterWrapper (
 		for t in this.normalsQueue do (
 			if (classOf t[1] == Bitmaptexture) then (					
 				local n = this.convertBumpToNormal t[1]
-				for i in t do replaceInstances i n
+				for i in t where n != false do replaceInstances i n
 			) else (
 				local n = this.convertBumpToNormal t[1]
-				replaceInstances t[1] n
+				if (n != undefined and n != false) do replaceInstances t[1] n
 			)				
 		)
 	),
