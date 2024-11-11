@@ -164,6 +164,7 @@ Script for bulk conversion models to GLB=
 - BugFix: Exception for Normal maps=
 
 [1.3.4]
++ Added: Quotes for comments=
 - BugFix: setVrayMtlFogColorToDiffuse func=
 
 [FILES]
@@ -3223,8 +3224,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		
 		fn getComment id = (
 			local ini = ::BATCH_GLB_PROCESSED_DIR + id + ".ini"
-			
-			return getINISetting ini "DATA" "comment"
+			local c = getINISetting ini "DATA" "comment"
+			return trimLeft (trimRight c "\"") "\""
 		)
 		
 		fn setComment id c = (
@@ -3246,7 +3247,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			c = trimLeft (trimRight c " \t") " \t"
 			
-			setINISetting ini "DATA" "comment" c
+			setINISetting ini "DATA" "comment" ("\"" + c + "\"")
 		)
 		
 		fn getData = (
