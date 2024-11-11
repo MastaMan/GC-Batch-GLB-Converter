@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.3.3
+VERSION=1.3.4
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -162,6 +162,9 @@ Script for bulk conversion models to GLB=
 
 [1.3.3]
 - BugFix: Exception for Normal maps=
+
+[1.3.4]
+- BugFix: setVrayMtlFogColorToDiffuse func=
 
 [FILES]
 Install.mcr=
@@ -1860,7 +1863,9 @@ struct BatchGLBConverterWrapper (
 	
 	fn setVrayMtlFogColorToDiffuse = (
 		for i in getClassInstances VRayMtl do (
-			if (i.refraction_fogColor == white and i.Refraction != black) do continue
+			if (i.refraction_fogColor == white) do continue
+			if (i.Refraction == black) do continue
+			
 			i.Diffuse = i.refraction_fogColor
 		)
 	),
