@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.3.1
+VERSION=1.3.2
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -155,6 +155,9 @@ Script for bulk conversion models to GLB=
 
 [1.3.1]
 + Added: Button Status: None=
+
+[1.3.2]
++ Added: If not foudn blend file and status Approve displays [Not found Blender file] status=
 
 [FILES]
 Install.mcr=
@@ -3400,6 +3403,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				i.isChecked = getChecked i.ini				
 				i.scene = getScene i.ini
 				if (i.approve != "") do approve = formatString "[$1] " v: #(i.approve)
+			
+				if (i.approve == "Approve" and (not i.isBlndExist and ::_rBatchGCGLBConverterSettings.cbxMakeBlend.checked)) do (
+					approve = "[Not found Blender file]"
+				)
 				
 				if (i.isChecked) do checkStatus = " [Checked]"
 				
@@ -4184,7 +4191,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		)	
 	)
 
-	addRollout _rBatchGCGLBConverter floaterBatchGLBConverter rolledUp: false border: false
 	addRollout _rBatchGCGLBConverterSettings floaterBatchGLBConverter rolledUp: true 
+	addRollout _rBatchGCGLBConverter floaterBatchGLBConverter rolledUp: false border: false	
 	addRollout _rAboutGCGLBConverter floaterBatchGLBConverter rolledUp: true
 )
