@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.3.4
+VERSION=1.3.5
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -166,6 +166,9 @@ Script for bulk conversion models to GLB=
 [1.3.4]
 + Added: Quotes for comments=
 - BugFix: setVrayMtlFogColorToDiffuse func=
+
+[1.3.5]
+*Changed: Button names and positions=
 
 [FILES]
 Install.mcr=
@@ -3077,8 +3080,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		)
 		
 		group "3. Export to Other Formats" (
-			button btnBatchExport "Batch Export Selected (0)" height: 24 width: 175 across: 2 align: #left tooltip: "Converts to GLB all Checked and selected models from list"
-			button btnQuickExport "Quick Export" align: #right height: 24 tooltip: "Converts to GLB without baking AO and converting to Blender"
+			button btnQuickExport "Quick Export" align: #left height: 24 tooltip: "Converts to GLB without baking AO and converting to Blender" across: 2
+			button btnBatchExport "Final Export Selected (0)" height: 24 width: 175  align: #right tooltip: "Converts to GLB all Checked and selected models from list"		
 		)
 		
 		group "4. Quality Assurance" (
@@ -3378,7 +3381,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			btnBatchExport.enabled = isAtleastOneSelected and checkedCnt != 0
 			lblStatus.caption = formatString "Ready to Export: $1 | Total Items: $2" v: #(checkedCnt, lbxList.items.count)
-			btnBatchExport.caption = formatString "Batch Export Selected ($1/$2)" v: #(checkedInSel, ss.count)
+			btnBatchExport.caption = formatString "Final Export Selected ($1/$2)" v: #(checkedInSel, ss.count)
 			btnCheckArchive.enabled = isOneSelected
 			btnQA.enabled = isOneSelected and ss[1].isGlbExist
 			btnStatusNone.enabled = isAtleastOneSelected
