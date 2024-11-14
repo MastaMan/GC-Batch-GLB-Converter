@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.3.5
+VERSION=1.3.6
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -169,6 +169,9 @@ Script for bulk conversion models to GLB=
 
 [1.3.5]
 *Changed: Button names and positions=
+
+[1.3.6]
+*Changed: Web Player Exposure=
 
 [FILES]
 Install.mcr=
