@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.3.6
+VERSION=1.3.7
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -168,10 +168,15 @@ Script for bulk conversion models to GLB=
 - BugFix: setVrayMtlFogColorToDiffuse func=
 
 [1.3.5]
-*Changed: Button names and positions=
+* Changed: Button names and positions=
 
 [1.3.6]
-*Changed: Web Player Exposure=
+* Changed: Web Player Exposure=
+
+[1.3.7]
+- Removed: Approve and Skip statuses from context menu=
+- BugFix: Wrong Blend statuses in ini=
+
 
 [FILES]
 Install.mcr=
@@ -3330,6 +3335,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				local approve = getApproveStatus id glb
 				local isApprove = approve == "Approve"
 				
+				if (isBlndExist and isApprove) do (
+					::_rBatchGCGLBConverter.setApproveStatus id blnd status: #approve
+				)
+				
 				local scn = getScene ini
 				
 				append ::BATCH_GLB_CONVERTER_FILES (
@@ -3753,10 +3762,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					)
 				),
 				fn show = (
-					rcmenu rcListbox (
-						menuItem approveModel "Approve Model" enabled: isSelected
-						menuItem skipModel "Skip Model" enabled: isSelected
-						separator sep0
+					rcmenu rcListbox (				
 						menuItem QA "QA GLB + Preview" enabled: this.isQAEnabled
 						menuItem openPreview "Open Site Preview" enabled: isSelected
 						menuItem copyArchivePath "Copy Archive Path" enabled: isSelected
@@ -3770,31 +3776,6 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 							local id = i.id
 							local f = this.item.filename
 							local status = getApproveStatus id i.glb
-							approveModel.checked = false
-							skipModel.checked = false
-							
-							if (this.items.count == 1) do (
-								if (not i.isChecked or not i.isGlbExist) do (
-									approveModel.enabled = false
-									skipModel.enabled = true
-								)
-								
-								if (status == "Approve") do (
-									approveModel.checked = true
-								)
-								
-								if (status == "Skip") do (
-									skipModel.checked = true
-								)
-							)
-						)
-						
-						on skipModel picked do (
-							setModelStatus status: #skip
-						)
-						
-						on approveModel picked do (
-							setModelStatus status: #approve
 						)
 						
 						on QA picked do (
