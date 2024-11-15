@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.3.7
+VERSION=1.3.8
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -177,6 +177,8 @@ Script for bulk conversion models to GLB=
 - Removed: Approve and Skip statuses from context menu=
 - BugFix: Wrong Blend statuses in ini=
 
+[1.3.8]
+- Added: Statuses Approve, Skip, None to context menu with proper functionality=
 
 [FILES]
 Install.mcr=
@@ -3762,7 +3764,11 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					)
 				),
 				fn show = (
-					rcmenu rcListbox (				
+					rcmenu rcListbox (		
+						menuItem approveModel "Approve" enabled: isSelected
+						menuItem noneModel "None" enabled: isSelected
+						menuItem skipModel "Skip" enabled: isSelected
+						separator sep0						
 						menuItem QA "QA GLB + Preview" enabled: this.isQAEnabled
 						menuItem openPreview "Open Site Preview" enabled: isSelected
 						menuItem copyArchivePath "Copy Archive Path" enabled: isSelected
@@ -3776,6 +3782,41 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 							local id = i.id
 							local f = this.item.filename
 							local status = getApproveStatus id i.glb
+							
+							approveModel.checked = false
+							skipModel.checked = false
+							noneModel.checked = false
+							
+							if (this.items.count == 1) do (
+								if (not i.isChecked or not i.isGlbExist) do (
+									approveModel.enabled = false
+									skipModel.enabled = true
+								)
+								
+								if (status == "Approve") do (
+									approveModel.checked = true
+								)
+								
+								if (status == "Skip") do (
+									skipModel.checked = true
+								)
+								
+								if (status == "") do (
+									noneModel.checked = true
+								)
+							)
+						)
+						
+						on noneModel picked do (
+							::_rBatchGCGLBConverter.btnStatusNone.pressed()
+						)
+						
+						on skipModel picked do (
+							::_rBatchGCGLBConverter.btnStatusSkip.pressed()
+						)
+						
+						on approveModel picked do (
+							::_rBatchGCGLBConverter.btnStatusApprove.pressed()
 						)
 						
 						on QA picked do (
