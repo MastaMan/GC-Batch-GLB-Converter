@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.3.8
+VERSION=1.3.9
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -179,6 +179,10 @@ Script for bulk conversion models to GLB=
 
 [1.3.8]
 - Added: Statuses Approve, Skip, None to context menu with proper functionality=
+
+[1.3.9]
+* Changed: CRON url for prod=
+
 
 [FILES]
 Install.mcr=
@@ -1096,7 +1100,7 @@ struct WebGLPlayerWrapper (
 
 
 struct GCUploaderWrapper (
-	prod = #("https://greatcatalog.net/cron/autoconversion-processing.php?key=profdDFkljio3245ldsvvvvws214Po", "gc-autoconverted"),
+	prod = #("https://greatcatalog.net/api/cron-processing-autoconverted.php?k=profdDFkljio3245ldsvvvvws214Po", "gc-autoconverted"),
 	test = #("https://t2.greatcatalog.net/api/cron-processing-autoconverted.php?k=devIddqdd3Depo989dsfNUiygw27D", "dev-gc-autoconverted-eu-1"),
 	currentPath = getFileNamePath (getThisScriptFileName()),
 	uploadDir = "",
