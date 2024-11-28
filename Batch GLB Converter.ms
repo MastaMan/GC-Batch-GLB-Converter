@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.3.9
+VERSION=1.4.0
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -183,6 +183,8 @@ Script for bulk conversion models to GLB=
 [1.3.9]
 * Changed: CRON url for prod=
 
+[1.4.0]
++ Added: Logging funciton=
 
 [FILES]
 Install.mcr=
@@ -325,6 +327,27 @@ struct dateTime (
 		mm = addZero mm
 		ss = addZero ss
 	)
+)
+
+fn getLogginFile = (
+	local dt = dateTime()
+	local dmy = dt.d + "." + dt.m + "." + dt.y
+	local n = "GLB_Converter_" + dmy + ".ini"
+	local f = @"C:\temp\" + n	
+)
+
+fn logging m = (
+	local dt = dateTime()
+	local dmy = dt.d + "." + dt.m + "." + dt.y
+	local hms = dt.hh + ":" + dt.mm + ":" + dt.ss
+	local t = "( " + dmy + " / " + hms + " ) ( " + timestamp() as string + " )|"
+	
+	local f = getLogginFile()
+	
+	local m = substituteString m "\n" " "
+	local msg = " > " + m
+	print msg
+	setIniSetting f "LOG" t msg
 )
 
 struct JsonWrapper (
@@ -1124,6 +1147,7 @@ struct GCUploaderWrapper (
 		w.Timeout = timeoutMin * 60 * 1000
 		
 		try (	
+			
 			local spm = dotNetClass "System.Net.ServicePointManager"
 			spm.SecurityProtocol = spm.SecurityProtocol.TLS12				
 			
@@ -1145,6 +1169,11 @@ struct GCUploaderWrapper (
 		if (d.count > 3) do d = trimRight d @"\"
 		local args = d + ";" + b
 		
+		local ff = getFiles (d + "*.*")
+		local cnt = ff.count as string
+		
+		logging "Start uploading to AWS " + cnt + " files..."
+		
 		local cmd = "sync-to-aws.bat \"" +  args + "\""
 		
 		local curDir = sysInfo.currentDir
@@ -1153,10 +1182,21 @@ struct GCUploaderWrapper (
 		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
 		
 		sysInfo.currentDir = curDir
+		
+		logging "Uploading to AWS done!"
 	),
 	fn syncCRON = (
+		logging "Start CRON sync..."
+		
 		local r = getRequest this.cred[1]
-		if (r == "All Done") do return true
+		if (r == "All Done") do (
+			logging "CRON processed successfully!"
+			logging ("CRON command: " + r)
+			return true
+		)
+		
+		logging "CRON did not send the All Done command!!!"
+		logging ("CRON command: " + r)
 		return false
 	),
 	fn init uploadDir mode: #prod = (
@@ -1189,6 +1229,8 @@ struct GCDownloaderWrapper (
 		return trimLeft (trimRight s tag) tag
 	),
 	fn download u f = (
+		logging "Start downloading files..."
+		
 		local args = u + ";" + f
 		
 		local cmd = "download.bat \"" +  args + "\""
@@ -1199,6 +1241,8 @@ struct GCDownloaderWrapper (
 		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
 		
 		sysInfo.currentDir = curDir
+		
+		logging "Downloading files done!"
 	),
 	fn readResponce r = (
 		if (r == undefined) do return undefined
@@ -3633,6 +3677,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			uploadMgr.run()
 			
 			updateLbx()
+			
+			local l = getLogginFile()
+			ShellLaunch l ""
 		)
 		
 		on btnQA pressed do startQA()
