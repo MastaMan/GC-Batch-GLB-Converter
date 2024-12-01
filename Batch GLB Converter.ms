@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.4.0
+VERSION=1.4.1
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -185,6 +185,9 @@ Script for bulk conversion models to GLB=
 
 [1.4.0]
 + Added: Logging funciton=
+
+[1.4.1]
+- BugFix: Small fixes=
 
 [FILES]
 Install.mcr=
@@ -1169,7 +1172,7 @@ struct GCUploaderWrapper (
 		if (d.count > 3) do d = trimRight d @"\"
 		local args = d + ";" + b
 		
-		local ff = getFiles (d + "*.*")
+		local ff = getFiles (d + @"\*.*")
 		local cnt = ff.count as string
 		
 		logging "Start uploading to AWS " + cnt + " files..."
