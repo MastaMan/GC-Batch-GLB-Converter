@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.4.1
+VERSION=1.4.2
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -188,6 +188,9 @@ Script for bulk conversion models to GLB=
 
 [1.4.1]
 - BugFix: Small fixes=
+
+[1.4.2]
+- BugFix: Logging error=
 
 [FILES]
 Install.mcr=
@@ -1175,7 +1178,7 @@ struct GCUploaderWrapper (
 		local ff = getFiles (d + @"\*.*")
 		local cnt = ff.count as string
 		
-		logging "Start uploading to AWS " + cnt + " files..."
+		logging ("Start uploading to AWS " + cnt + " files...")
 		
 		local cmd = "sync-to-aws.bat \"" +  args + "\""
 		
