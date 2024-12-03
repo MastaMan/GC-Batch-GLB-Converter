@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.4.2
+VERSION=1.4.3
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -190,6 +190,9 @@ Script for bulk conversion models to GLB=
 - BugFix: Small fixes=
 
 [1.4.2]
+- BugFix: Logging error=
+
+[1.4.3]
 - BugFix: Logging error=
 
 [FILES]
@@ -1197,12 +1200,12 @@ struct GCUploaderWrapper (
 		local r = getRequest this.cred[1]
 		if (r == "All Done") do (
 			logging "CRON processed successfully!"
-			logging ("CRON command: " + r)
+			logging ("CRON command: " + r as string)
 			return true
 		)
 		
 		logging "CRON did not send the All Done command!!!"
-		logging ("CRON command: " + r)
+		logging ("CRON command: " + r as string)
 		return false
 	),
 	fn init uploadDir mode: #prod = (
