@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.4.3
+VERSION=1.4.4
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -194,6 +194,10 @@ Script for bulk conversion models to GLB=
 
 [1.4.3]
 - BugFix: Logging error=
+
+[1.4.4]
++ Added: Write error log AWS in temp folder=
+* Changed: Prod key=
 
 [FILES]
 Install.mcr=
@@ -1132,7 +1136,7 @@ struct WebGLPlayerWrapper (
 
 
 struct GCUploaderWrapper (
-	prod = #("https://greatcatalog.net/api/cron-processing-autoconverted.php?k=profdDFkljio3245ldsvvvvws214Po", "gc-autoconverted"),
+	prod = #("https://greatcatalog.net/api/cron-processing-autoconverted.php?k=profdDFkljio3245ldsvvvvws214Po2", "gc-autoconverted"),
 	test = #("https://t2.greatcatalog.net/api/cron-processing-autoconverted.php?k=devIddqdd3Depo989dsfNUiygw27D", "dev-gc-autoconverted-eu-1"),
 	currentPath = getFileNamePath (getThisScriptFileName()),
 	uploadDir = "",
