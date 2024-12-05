@@ -19,4 +19,4 @@ for /f "tokens=1,2 delims=;" %%i in (%input%) do (
 )
 
 cd C:\Program Files\Amazon\AWSCLIV2\
-aws s3 cp "%dest%" s3://%bucket%/Converted/ --recursive
+aws s3 cp "%dest%" s3://%bucket%/Converted/ --recursive --only-show-errors > "c:\temp\error-aws.log"
