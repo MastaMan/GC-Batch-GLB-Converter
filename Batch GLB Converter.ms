@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.4.4
+VERSION=1.4.5
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -199,6 +199,9 @@ Script for bulk conversion models to GLB=
 + Added: Write error log AWS in temp folder=
 * Changed: Prod key=
 
+[1.4.5]
+* Changed: DotNet WebRequest to CURL for better stability=
+
 [FILES]
 Install.mcr=
 jpegoptim.exe=
@@ -229,6 +232,7 @@ blender-render.bat
 blender-render.py=
 clamp-colors.bat=
 contrast.bat=
+web-request.bat=
 
 [SCRIPT]
 */
@@ -1135,6 +1139,40 @@ struct WebGLPlayerWrapper (
 )
 
 
+struct WebRequestWrapper (
+	currentPath = getFileNamePath (getThisScriptFileName()),	
+	fn read o = (
+		local txt = ""
+		if (o == "" or not doesFileExist o) do return ""
+		local data = (dotNetClass "System.IO.File").readAllLines o
+		
+		for i in data do txt += i + "\n"
+		
+		txt = trimLeft (trimRight txt)
+		
+		return txt
+	),
+	fn get u = (
+		local o = @"c:\temp\" + "tmp_webRequest_" + (timeStamp() as string) + ".txt"
+		local args = u + ";" + o
+		
+		local cmd = "web-request.bat \"" +  args + "\""
+		
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath
+		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+		
+		sysInfo.currentDir = curDir
+		
+		local data = this.read o
+		
+		deleteFile o
+		
+		return data
+	)
+)
+
 struct GCUploaderWrapper (
 	prod = #("https://greatcatalog.net/api/cron-processing-autoconverted.php?k=profdDFkljio3245ldsvvvvws214Po2", "gc-autoconverted"),
 	test = #("https://t2.greatcatalog.net/api/cron-processing-autoconverted.php?k=devIddqdd3Depo989dsfNUiygw27D", "dev-gc-autoconverted-eu-1"),
@@ -1147,32 +1185,6 @@ struct GCUploaderWrapper (
 		
 	fn trim s tag: " " = (
 		return trimLeft (trimRight s tag) tag
-	),
-	fn readResponce r = (
-		if (r == undefined) do return undefined
-		
-		local s = r.GetResponseStream()
-		local sr = dotNetObject "System.IO.StreamReader" s
-		return sr.ReadToEnd()
-	),
-	fn getRequest url timeoutMin: 180 = (
-		local w = (dotNetClass "System.Net.WebRequest").Create (url  + "&time=" + (timestamp() as string))
-		w.Timeout = timeoutMin * 60 * 1000
-		
-		try (	
-			
-			local spm = dotNetClass "System.Net.ServicePointManager"
-			spm.SecurityProtocol = spm.SecurityProtocol.TLS12				
-			
-			w.Method = "GET"		
-			w.UserAgent = "Mozilla/5.0"
-			
-			local r = w.GetResponse()
-			
-			return (readResponce r)
-		) catch ()
-			
-		return undefined
 	),
 	fn rmDir d = (
 		local cmd = "rmdir /S /Q \"" + d + "\""
@@ -1201,7 +1213,8 @@ struct GCUploaderWrapper (
 	fn syncCRON = (
 		logging "Start CRON sync..."
 		
-		local r = getRequest this.cred[1]
+		-- Web Request
+		local r = (WebRequestWrapper()).get this.cred[1]
 		if (r == "All Done") do (
 			logging "CRON processed successfully!"
 			logging ("CRON command: " + r as string)
