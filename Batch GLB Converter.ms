@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.4.5
+VERSION=1.4.6
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -201,6 +201,10 @@ Script for bulk conversion models to GLB=
 
 [1.4.5]
 * Changed: DotNet WebRequest to CURL for better stability=
+
+[1.4.6]
++ Added: Support nested bitmap channel for renderMap=
++ Added: Support diffuse texture for CoronaSkinMtl=
 
 [FILES]
 Install.mcr=
@@ -1638,8 +1642,18 @@ struct BatchGLBConverterWrapper (
 		return getFileNameFile maxFileName
 	),
 	
+	fn getMapChannel t = (
+		for i in (getClassInstances Bitmaptexture target: t) do (
+			return try (i.coords.mapChannel) catch (1)
+		)
+		
+		return 1
+	),
+	
 	fn renderTargetMap t size: [2048, 2048] isReplace: true type: #jpg clamp: true = (
 		if (t == undefined) do return undefined
+		
+		local mapChannel = getMapChannel t		
 		local p = this.getCacheMapsDir()
 		makeDir p all: true
 		local f = this.generateCacheFilename type: type
@@ -1654,6 +1668,7 @@ struct BatchGLBConverterWrapper (
 		this.optimizeImages files: #(f)
 		
 		local bt = Bitmaptexture filename: f
+		bt.coords.mapChannel = mapChannel
 		
 		if (isReplace) do replaceInstances t bt
 		
@@ -1916,6 +1931,7 @@ struct BatchGLBConverterWrapper (
 			local nm = CoronaPhysicalMtl()			
 			nm.name = i.name
 			nm.baseColor = i.skinColor
+			nm.baseTexmap = i.texmapSkinColor
 			nm.baseRoughness = 1.0 - i.reflection1Glossiness
 			nm.baseIor = i.reflection1Ior
 			
