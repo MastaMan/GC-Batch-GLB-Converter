@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.4.6
+VERSION=1.4.7
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -205,6 +205,9 @@ Script for bulk conversion models to GLB=
 [1.4.6]
 + Added: Support nested bitmap channel for renderMap=
 + Added: Support diffuse texture for CoronaSkinMtl=
+
+[1.4.7]
+* Imporved: AA for GLB web player=
 
 [FILES]
 Install.mcr=
