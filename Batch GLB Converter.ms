@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.4.7
+VERSION=1.4.8
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -208,6 +208,10 @@ Script for bulk conversion models to GLB=
 
 [1.4.7]
 * Imporved: AA for GLB web player=
+
+[1.4.8]
++ Added: neutralizeCoronaMix funciton=
+- BugFix: renderTargetMap gamma, 3Ds Max jpg format glitch=
 
 [FILES]
 Install.mcr=
@@ -1605,7 +1609,7 @@ struct BatchGLBConverterWrapper (
 	),
 	
 	fn getCacheMapsDir = (
-		local p = (getSceneDir()) + @"\_glb_cache\"
+		local p = (getSceneDir()) + @"_glb_cache\"
 		makeDir p all: true
 		return p
 	),
@@ -1659,12 +1663,18 @@ struct BatchGLBConverterWrapper (
 		local mapChannel = getMapChannel t		
 		local p = this.getCacheMapsDir()
 		makeDir p all: true
-		local f = this.generateCacheFilename type: type
-		local rm = renderMap t size: size
-		rm.gamma = 1.0
-		rm.filename = f
+		local f = this.generateCacheFilename type: #png
+		
+		local rm = renderMap t size: size filename: f --display: true  --into: lm
+		rm.gamma = 2.2
+		rm.filename = f		
+		
 		save rm
 		close rm
+		
+		if (type != #png) do (
+			f = this.convertImageTo f type: #jpg
+		)
 		
 		if (clamp) do this.clampImageColors f
 		
@@ -1675,7 +1685,7 @@ struct BatchGLBConverterWrapper (
 		
 		if (isReplace) do replaceInstances t bt
 		
-		return bt
+		return bt 
 	),
 	
 	fn getMapFullPath f = (
@@ -1779,7 +1789,7 @@ struct BatchGLBConverterWrapper (
 				return appendIfUnique this.texturesQueue[id] t
 			)
 		)
-		
+	
 		-- To bake
 		-- To bake map, cnt = 1, classOf not Bitmaptex
 		return append this.texturesQueue #(t)
@@ -1832,7 +1842,7 @@ struct BatchGLBConverterWrapper (
 			if (classOf t[1] == Bitmaptexture) then (
 				local b = cacheBitmap t[1]
 				for i in t where i != undefined and b != undefined do replaceInstances i b
-			) else if (t[1] != undefined) then (
+			) else if (t[1] != undefined) then (				
 				this.renderTargetMap t[1] isReplace: true type: #jpg
 			)				
 		)
@@ -1888,6 +1898,24 @@ struct BatchGLBConverterWrapper (
 			close b
 			
 			i.filename = f
+		)
+	),
+	
+	fn neutralizeCoronaMix = (
+		for i in getClassInstances CoronaMix do (
+			local nm = Mix()
+			nm.name = i.name + "_" + (random 1000 10000) as string
+			
+			nm.mixAmount = i.mixAmount * 100.0
+			nm.mask = i.texmapMix
+			
+			nm.color1 = i.colorTop
+			nm.color2 = i.colorBottom
+			
+			nm.map1 = i.texmapTop
+			nm.map2 = i.texmapBottom
+			
+			replaceInstances i nm
 		)
 	),
 	
@@ -2673,6 +2701,7 @@ struct BatchGLBConverterWrapper (
 		this.neutralizeNoise()
 		this.neutralizeBlendMtl()
 		this.neutralizeDoubleSided()
+		this.neutralizeCoronaMix()
 		
 		-- Convert to GLTF Material
 		this.coronaPhysicalMtlToGltfMaterial falloffMaterials: falloffMaterials
@@ -2685,7 +2714,7 @@ struct BatchGLBConverterWrapper (
 		replaceToBlackEmptyBitmap()
 		
 		-- Render Maps
-		this.renderTexturesQueue()
+		this.renderTexturesQueue()	
 		this.renderNormalsQueue()
 		
 		if (ao.enabled) do this.createAOmap ao: ao
