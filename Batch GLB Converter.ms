@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.4.8
+VERSION=1.4.9
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -212,6 +212,9 @@ Script for bulk conversion models to GLB=
 [1.4.8]
 + Added: neutralizeCoronaMix funciton=
 - BugFix: renderTargetMap gamma, 3Ds Max jpg format glitch=
+
+[1.4.9]
++ Added: Bake AO Custom Scene option=
 
 [FILES]
 Install.mcr=
@@ -2931,6 +2934,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			group "Custom Scene Coversion Options" (
 				checkbox cbxKillTiling "Kill Tex Tiling and Apply UVW XForm" align: #left enabled: false
+				checkbox cbxBakeAO "Bake AO" align: #left enabled: false checked: true
 			)
 			
 			button btnSave "Save Scene" width: 254 height: 35 enabled: false
@@ -3063,7 +3067,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			fn loadChecks = (
 				local o1 = getter "kill_tiling"
+				local o2 = getter "bake_ao"
 				cbxKillTiling.checked = o1 == "true"
+				cbxBakeAO.checked = o2 != "false"
 			)
 			
 			fn enableBackFaceCull = (
@@ -3086,6 +3092,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			on cbxKillTiling changed a do (
 				setter "kill_tiling" a
+			)
+			
+			on cbxBakeAO changed a do (
+				setter "bake_ao" a
 			)
 			
 			on _rBatchGCGLBChecker open do (
@@ -3149,6 +3159,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				btnSave.enabled = true
 				cbxKillTiling.enabled = true
+				cbxBakeAO.enabled = true
 				
 				try (::_rBatchGCGLBConverter.updateLbx()) catch ()
 			)
@@ -3188,7 +3199,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			)
 		)
 		
-		CreateDialog _rBatchGCGLBChecker 280 255
+		CreateDialog _rBatchGCGLBChecker 280 265
 	)
 
 	rollout _rBatchGCGLBConverter "GLB Converter" category: 1 (
@@ -3318,6 +3329,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			return (getINISetting ini "index" "kill_tiling") == "true"
 		)
 		
+		fn getBakeAO ini = (
+			return (getINISetting ini "index" "bake_ao") != "false"
+		)
+		
 		fn getMask f = (
 			f = getFilenameFile f
 			f = trimLeft f "0123456789-"
@@ -3417,6 +3432,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				approve,
 				isApprove,
 				iniProcessed,
+				isBakeAO,
 				isNormalizeTiling
 			)
 			
@@ -3451,6 +3467,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				local isChecked = getChecked ini
 				local isNormalizeTiling = getKillTiling ini
+				local isBakeAO = getBakeAO ini
 				--local isSplitted = splitterMgr.isSplitted()
 				
 				local isGlbExist = doesFileExist glb
@@ -3488,7 +3505,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					approve: approve \
 					isApprove: isApprove \
 					iniProcessed: iniProcessed \
-					isNormalizeTiling: isNormalizeTiling
+					isBakeAO: isBakeAO \
+					isNormalizeTiling: isNormalizeTiling 
 				)
 			)
 			
@@ -3543,11 +3561,13 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			for i in ::BATCH_GLB_CONVERTER_FILES do (
 				local glbStatus = ""
 				local blndStatus = ""
+				local aoStatus = ""
 				local checkStatus = ""
 				local approve = ""
 				
 				if (i.isGlbExist) do glbStatus = " [GLB]"
 				if (i.isBlndExist) do blndStatus = " [BLEND]"
+				if (not i.isBakeAO) do aoStatus = " [no AO]"
 				
 				i.isChecked = getChecked i.ini				
 				i.scene = getScene i.ini
@@ -3565,7 +3585,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					blndStatus = ""
 				)
 				
-				append o (formatString "$1$2$3$4$5" v: #(approve, i.name, checkStatus, glbStatus, blndStatus))
+				append o (formatString "$1$2$3$4$5$6" v: #(approve, i.name, checkStatus, glbStatus, blndStatus, aoStatus))
 				if (findItem selectedNames i.name != 0) do append sel c
 				
 				c += 1
@@ -3633,25 +3653,6 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			local outPath = ::BATCH_GLB_PROCESSED_DIR
 			
-			struct AO_Settings (enabled, passes, resolution, denoise, size, type)
-			ao = AO_Settings()
-			ao.enabled = ::_rBatchGCGLBConverterSettings.cbxUseCoronaAO.checked or ::_rBatchGCGLBConverterSettings.cbxUseXNormalAO.checked
-			if (type == #quick) do ao.enabled = false
-			
-			if (::_rBatchGCGLBConverterSettings.cbxUseCoronaAO.checked) do (
-				ao.size = (::_rBatchGCGLBConverterSettings.spnAOSize.value as string) + "cm"
-				ao.passes = ::_rBatchGCGLBConverterSettings.spnAOPasses.value
-				ao.resolution = ::_rBatchGCGLBConverterSettings.spnAOResolution.value
-				ao.denoise = ::_rBatchGCGLBConverterSettings.cbxAODenoise.checked
-				ao.type = #corona
-			)
-			
-			if (::_rBatchGCGLBConverterSettings.cbxUseXNormalAO.checked) do (
-				ao.resolution = ::_rBatchGCGLBConverterSettings.spnAOXNormalResolution.value
-				ao.denoise = ::_rBatchGCGLBConverterSettings.cbxAODenoiseXNormal.checked
-				ao.type = #xnormal
-			)
-			
 			SetQuietMode true
 			progressStart "In process..."
 			escapeEnable = true
@@ -3660,6 +3661,25 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			SceneConverter.BackupOriginalFiles = false
 			
 			for i in 1 to ss.count do (
+				struct AO_Settings (enabled, passes, resolution, denoise, size, type)
+				local ao = AO_Settings()
+				ao.enabled = ::_rBatchGCGLBConverterSettings.cbxUseCoronaAO.checked or ::_rBatchGCGLBConverterSettings.cbxUseXNormalAO.checked
+				if (type == #quick) do ao.enabled = false
+				
+				if (::_rBatchGCGLBConverterSettings.cbxUseCoronaAO.checked) do (
+					ao.size = (::_rBatchGCGLBConverterSettings.spnAOSize.value as string) + "cm"
+					ao.passes = ::_rBatchGCGLBConverterSettings.spnAOPasses.value
+					ao.resolution = ::_rBatchGCGLBConverterSettings.spnAOResolution.value
+					ao.denoise = ::_rBatchGCGLBConverterSettings.cbxAODenoise.checked
+					ao.type = #corona
+				)
+				
+				if (::_rBatchGCGLBConverterSettings.cbxUseXNormalAO.checked) do (
+					ao.resolution = ::_rBatchGCGLBConverterSettings.spnAOXNormalResolution.value
+					ao.denoise = ::_rBatchGCGLBConverterSettings.cbxAODenoiseXNormal.checked
+					ao.type = #xnormal
+				)
+				
 				local f = ss[i]
 				
 				if (not doesFileExist f.scene) do continue
@@ -3685,7 +3705,13 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				r.del = undefined
 				r.opened = true
 				
-				local glb = ::API_BATCH_GLB_CONVERTER.run scn: r out: outPath ao: ao isNormalizeTiling: f.isNormalizeTiling
+				local isNormalizeTiling = ::_rBatchGCGLBConverter.getKillTiling f.ini
+				local isBakeAO = ::_rBatchGCGLBConverter.getBakeAO f.ini
+			
+				if (ao.enabled and not isBakeAO) do (
+					ao.enabled = false				
+				)
+				local glb = ::API_BATCH_GLB_CONVERTER.run scn: r out: outPath ao: ao isNormalizeTiling: isNormalizeTiling
 				
 				if (getProgressCancel() or keyboard.escPressed) do return false
 				
