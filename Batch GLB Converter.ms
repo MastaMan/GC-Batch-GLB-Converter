@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.4.9
+VERSION=1.5.0
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -215,6 +215,20 @@ Script for bulk conversion models to GLB=
 
 [1.4.9]
 + Added: Bake AO Custom Scene option=
+
+[1.5.0]
++ Added: Auto Convert (Test) optin in context menu=
++ Added: Auto Convert: Explode Groups=
++ Added: Auto Convert: Reset XForm=
++ Added: Auto Convert: Remove lineIso for Turbosmooth=
++ Added: Auto Convert: Attach=
++ Added: Auto Convert: Set Pivot=
++ Added: Auto Convert: Center Scene=
++ Added: Auto Convert: Export withou AO but with Blender files=
++ Added: Save window positon for Skip Comment=
+* Changed: QA GLB + Preview set as first item in context menu=
+* Changed: Simplified UI=
+- BugFix: Context menu items Appove and None for more then one selected in list=
 
 [FILES]
 Install.mcr=
@@ -2916,12 +2930,14 @@ try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
 
 if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 
-	global floaterBatchGLBConverter = newRolloutFloater "GLB Converter" 300 820
+	global floaterBatchGLBConverter = newRolloutFloater "GLB Converter" 300 890
 
-	fn checkArchiveForErrors = (
+	fn checkArchiveForErrors type: #default = (
 		try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
 		if (::BATCH_GLB_CONVERTER_FILES == undefined) do return false
 		if (::floaterBatchGLBConverter == undefined) do return false
+		
+		global checkType = type
 		
 		rollout _rBatchGCGLBChecker "" (
 			group "Info" ( 
@@ -3090,6 +3106,60 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				)
 			)
 			
+			fn explodeAllGroups = (				
+				local gg = for o in objects where isGroupHead o collect o
+				for g in gg do try (explodeGroup g) catch ()
+			)
+			
+			fn disableIsolineDisplayForSmooth = (
+				for i in getClassInstances MeshSmooth do i.isolineDisplay = false
+				for i in getClassInstances TurboSmooth do i.isolineDisplay = false
+			)
+			
+			fn resetXForAllObjects = (
+				for o in geometry where isValidNode o and not isDeleted o do (
+					ResetXForm o
+					collapseStack o
+				)
+			)
+			
+			fn attachSceneObjects = (	
+				local objs = geometry as array
+				if (objs.count < 2) do return false
+				
+				local base = objs[1]
+				try (collapseStack base) catch ()
+				try (convertToPoly base) catch ()
+				base.parent = undefined	
+				
+				for i in objs.count to 2 by -1 do (
+					local o = objs[i]
+					if (o == undefined or not isValidNode o) do continue		
+					try (convertToPoly o) catch ()
+					o.parent = undefined
+					try (polyop.attach base o) catch ()					
+				)
+				
+				CenterPivot base
+				base.wirecolor = gray
+				base.name = getFilenameFile maxFileName
+			)
+			
+			fn setSnenePivotBottom = (
+				MaxOps.pivotMode = #pivotOnly
+				
+				local center = objects.center
+				local bottom = objects.min.z
+				
+				for i in objects do (
+					i.pivot = center
+					i.pivot.z = bottom
+					i.pos = [0, 0, 0]
+				)
+			)
+
+			
+			
 			on cbxKillTiling changed a do (
 				setter "kill_tiling" a
 			)
@@ -3155,11 +3225,20 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				enableBackFaceCull()
 				setMapsVisible()
 				
+				if (::checkType == #autoConvert) do (
+					explodeAllGroups()
+					disableIsolineDisplayForSmooth()
+					resetXForAllObjects()
+					attachSceneObjects()
+					setSnenePivotBottom()
+				)
+				
 				updateUI()
 				
 				btnSave.enabled = true
 				cbxKillTiling.enabled = true
 				cbxBakeAO.enabled = true
+				
 				
 				try (::_rBatchGCGLBConverter.updateLbx()) catch ()
 			)
@@ -3203,40 +3282,29 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 	)
 
 	rollout _rBatchGCGLBConverter "GLB Converter" category: 1 (
-		group "Sync Amazon Folder" (
-			edittext edtInputPath "" readonly: true across: 2 align: #left fieldwidth: 215 height: 22 tooltip: "Select a folder to download models"	
-			button btnSearchInputPath "..." width: 35 height: 24  align: #right offset: [0, -1]		
-		)
-		group "Files List (*.zip)" (
-			multilistbox lbxList "" items: #() height: 25
-			label lblStatus "Selected items for export: 0" align: #right
-			button btnSelectAll "Select All" align: #center width: 100 across: 2
-			button btnDeselect "Deselect" align: #center width: 100
-		)
 		
-		group "1. Download from DB" (
-			button btnDownload "Download Models" height: 24 width: 260 tooltip: "Download all models from the current queue"	
-		)
+		edittext edtInputPath "" readonly: true across: 2 align: #left fieldwidth: 215 height: 22 tooltip: "Select a folder to download models"	
+		button btnSearchInputPath "..." width: 35 height: 24  align: #right offset: [0, -1]		
+			
+		multilistbox lbxList "" items: #() height: 45
+		label lblStatus "Selected items for export: 0" align: #right
+		--button btnSelectAll "Select All" align: #center width: 100 across: 2
+		--button btnDeselect "Deselect" align: #center width: 100
+			
+		button btnDownload "Download Models" height: 24 width: 260 tooltip: "Download all models from the current queue"	
+		--button btnCheckArchive "Check Archive" width: 260 height: 24 tooltip: "Check the model for errors:\n- No groups\n- Only one logical model (Attached)\n- Centered and grounded\n- Reasonable amount of polygons\n- Correct mapping"
 		
-		group "2. Moderate Archives" (
-			button btnCheckArchive "Check Archive" width: 260 height: 24 tooltip: "Check the model for errors:\n- No groups\n- Only one logical model (Attached)\n- Centered and grounded\n- Reasonable amount of polygons\n- Correct mapping"
-		)
+		button btnQuickExport "Quick Export" align: #left height: 24 tooltip: "Converts to GLB without baking AO and converting to Blender" across: 2 offset: [0, 10]
+		button btnBatchExport "Final Export Selected (0)" height: 24 width: 175  align: #right tooltip: "Converts to GLB all Checked and selected models from list"	 offset: [0, 10]	
 		
-		group "3. Export to Other Formats" (
-			button btnQuickExport "Quick Export" align: #left height: 24 tooltip: "Converts to GLB without baking AO and converting to Blender" across: 2
-			button btnBatchExport "Final Export Selected (0)" height: 24 width: 175  align: #right tooltip: "Converts to GLB all Checked and selected models from list"		
-		)
+		button btnQA "QA GLB + Preview" height: 24 width: 260 tooltip: "Conversion quality assessment" offset: [0, 10]
 		
-		group "4. Quality Assurance" (
-			button btnQA "QA GLB + Preview" height: 24 width: 260 tooltip: "Conversion quality assessment"
-			button btnStatusApprove "Status: Approve" across: 3 height: 24 width: 82 align: #left tooltip: "Approve models"
-			button btnStatusNone "Status: None" height: 24 width: 82 align: #center tooltip: "Set status None"
-			button btnStatusSkip "Status: Skip" height: 24 width: 82 align: #right tooltip: "Skip models"
-		)
+		button btnStatusApprove "Status: Approve" across: 3 height: 24 width: 82 align: #left tooltip: "Approve models" offset: [0, 10]
+		button btnStatusNone "Status: None" height: 24 width: 82 align: #center tooltip: "Set status None" offset: [0, 10]
+		button btnStatusSkip "Status: Skip" height: 24 width: 82 align: #right tooltip: "Skip models" offset: [0, 10]
 		
-		group "5. Upload to DB" (
-			button btnUpload "Upload All Models " height: 24 width: 260 tooltip: "Uploads all models into the Database, if all statuses are set: Approve or Skip and all generated files exists (GLB, BLEND)"
-		)
+		button btnUpload "Upload All Models " height: 24 width: 260 tooltip: "Uploads all models into the Database, if all statuses are set: Approve or Skip and all generated files exists (GLB, BLEND)" offset: [0, 10]
+		
 		
 		global BATCH_GLB_CONVERTER_FILES = #()
 		global BATCH_GLB_PROCESSED_DIR = ""
@@ -3536,7 +3604,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			btnBatchExport.enabled = isAtleastOneSelected and checkedCnt != 0
 			lblStatus.caption = formatString "Ready to Export: $1 | Total Items: $2" v: #(checkedCnt, lbxList.items.count)
 			btnBatchExport.caption = formatString "Final Export Selected ($1/$2)" v: #(checkedInSel, ss.count)
-			btnCheckArchive.enabled = isOneSelected
+			--btnCheckArchive.enabled = isOneSelected
 			btnQA.enabled = isOneSelected and ss[1].isGlbExist
 			btnStatusNone.enabled = isAtleastOneSelected
 			btnStatusApprove.enabled = isAtleastOneSelected
@@ -3665,6 +3733,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				local ao = AO_Settings()
 				ao.enabled = ::_rBatchGCGLBConverterSettings.cbxUseCoronaAO.checked or ::_rBatchGCGLBConverterSettings.cbxUseXNormalAO.checked
 				if (type == #quick) do ao.enabled = false
+				if (type == #autoConvert) do ao.enabled = false
 				
 				if (::_rBatchGCGLBConverterSettings.cbxUseCoronaAO.checked) do (
 					ao.size = (::_rBatchGCGLBConverterSettings.spnAOSize.value as string) + "cm"
@@ -3716,7 +3785,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				if (getProgressCancel() or keyboard.escPressed) do return false
 				
 				-- Bender
-				if (type == #default) do (
+				if (type == #default or type == #autoConvert) do (
 					if (::_rBatchGCGLBConverterSettings.cbxMakeBlend.checked) do (					
 						blendGLBMgr.init glb: glb name: f.blendName
 						blendGLBMgr.convertGLB2Blend()
@@ -3745,6 +3814,44 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				progressUpdate (100 * i / ss.count)*/
 			)
+			
+			progressEnd()
+			resetMaxFile #noprompt
+			SetQuietMode false
+			
+			updateLbx()
+			
+			ShellLaunch outPath ""
+		)
+		
+		fn autoConvert = (
+			local ss = lbxList.selection as array
+			if (ss.count == 0) do return messageBox "Please select items from list!" title: "Warning!"
+			
+			local p = edtInputPath.text
+			if (p == "") do return messageBox "Please select Sync Amazon Folder!" title: "Warning!"
+			
+			local outPath = ::BATCH_GLB_PROCESSED_DIR
+			
+			SetQuietMode true
+			progressStart "In process..."
+			escapeEnable = true
+			clearListener()
+			
+			print ss
+			
+			SceneConverter.BackupOriginalFiles = false
+ 			
+ 			for i in ss do (
+ 				lbxList.selection =#{i}
+ 				checkArchiveForErrors type: #autoConvert 				
+ 				::_rBatchGCGLBChecker.btnSave.pressed()								
+ 			)
+			
+			try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
+ 				
+			lbxList.selection = ss
+			startBatchExport type: #autoConvert
 			
 			progressEnd()
 			resetMaxFile #noprompt
@@ -3850,6 +3957,22 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					if (items.count == 1) do (
 						edtComment.text = _rBatchGCGLBConverter.getComment items[1].id
 					)
+					
+					local x = '*'.get "_rSendCommend_x"
+					local y = '*'.get "_rSendCommend_y"
+					
+					if (x != "" and y != "") do (
+						x = x as integer
+						y = y as integer
+						SetDialogPos _rSendCommend [x, y]
+					)		
+				)
+				
+				on _rSendCommend close do (
+					local p = GetDialogPos _rSendCommend
+			
+					'*'.add "_rSendCommend_x" p.x
+					'*'.add "_rSendCommend_y" p.y
 				)
 				
 				on lbxReasons selected a do (
@@ -3915,15 +4038,22 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					)
 				),
 				fn show = (
-					rcmenu rcListbox (		
-						menuItem approveModel "Approve" enabled: isSelected
-						menuItem noneModel "None" enabled: isSelected
-						menuItem skipModel "Skip" enabled: isSelected
-						separator sep0						
+					rcmenu rcListbox (
 						menuItem QA "QA GLB + Preview" enabled: this.isQAEnabled
+						separator sep0
+						
+						menuItem approveModel "Approve" enabled: atleastOneSelected
+						menuItem noneModel "None" enabled: atleastOneSelected
+						menuItem skipModel "Skip" enabled: isSelected
+						separator sep1						
+						
 						menuItem openPreview "Open Site Preview" enabled: isSelected
 						menuItem copyArchivePath "Copy Archive Path" enabled: isSelected
-						separator sep1
+						separator sep2
+						
+						menuItem autoConvert "Auto Convert (Under Test)" enabled: atleastOneSelected
+						
+						separator sep3
 						menuItem removeAll "Remove All (+Generated Files)" enabled: atleastOneSelected
 						
 						on rcListbox open do (							
@@ -3956,6 +4086,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 									noneModel.checked = true
 								)
 							)
+						)
+						
+						on autoConvert picked do (
+							::_rBatchGCGLBConverter.autoConvert()
 						)
 						
 						on noneModel picked do (
