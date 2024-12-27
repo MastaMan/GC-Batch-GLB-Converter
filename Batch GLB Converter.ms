@@ -217,7 +217,7 @@ Script for bulk conversion models to GLB=
 + Added: Bake AO Custom Scene option=
 
 [1.5.0]
-+ Added: Auto Convert (Test) optin in context menu=
++ Added: Auto Convert (Test) option in context menu=
 + Added: Auto Convert: Explode Groups=
 + Added: Auto Convert: Reset XForm=
 + Added: Auto Convert: Remove lineIso for Turbosmooth=
@@ -3226,6 +3226,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				setMapsVisible()
 				
 				if (::checkType == #autoConvert) do (
+					setter "bake_ao" "false"
 					explodeAllGroups()
 					disableIsolineDisplayForSmooth()
 					resetXForAllObjects()
