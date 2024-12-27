@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.5.0
+VERSION=1.5.1
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
