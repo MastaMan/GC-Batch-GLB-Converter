@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.5.1
+VERSION=1.5.2
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -233,6 +233,9 @@ Script for bulk conversion models to GLB=
 [1.5.1]
 + Added: Final Export to context menu=
 - Removed: Status None for context menu=
+
+[1.5.2]
+- BugFix: Fatal error with checked=
 
 [FILES]
 Install.mcr=
@@ -4088,9 +4091,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 									skipModel.checked = true
 								)
 								
-								if (status == "") do (
+								/* if (status == "") do (
 									noneModel.checked = true
-								)
+								) */
 							)
 						)
 						
