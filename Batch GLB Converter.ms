@@ -230,6 +230,10 @@ Script for bulk conversion models to GLB=
 * Changed: Simplified UI=
 - BugFix: Context menu items Appove and None for more then one selected in list=
 
+[1.5.1]
++ Added: Final Export to context menu=
+- Removed: Status None for context menu=
+
 [FILES]
 Install.mcr=
 jpegoptim.exe=
@@ -4044,7 +4048,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 						separator sep0
 						
 						menuItem approveModel "Approve" enabled: atleastOneSelected
-						menuItem noneModel "None" enabled: atleastOneSelected
+						--menuItem noneModel "None" enabled: atleastOneSelected
 						menuItem skipModel "Skip" enabled: isSelected
 						separator sep1						
 						
@@ -4052,6 +4056,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 						menuItem copyArchivePath "Copy Archive Path" enabled: isSelected
 						separator sep2
 						
+						menuItem batchExport "Final Export Selected" enabled: atleastOneSelected
 						menuItem autoConvert "Auto Convert (Under Test)" enabled: atleastOneSelected
 						
 						separator sep3
@@ -4067,7 +4072,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 							
 							approveModel.checked = false
 							skipModel.checked = false
-							noneModel.checked = false
+							--noneModel.checked = false
 							
 							if (this.items.count == 1) do (
 								if (not i.isChecked or not i.isGlbExist) do (
@@ -4091,6 +4096,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 						
 						on autoConvert picked do (
 							::_rBatchGCGLBConverter.autoConvert()
+						)
+						
+						on batchExport picked do (
+							::_rBatchGCGLBConverter.btnBatchExport.pressed()
 						)
 						
 						on noneModel picked do (
