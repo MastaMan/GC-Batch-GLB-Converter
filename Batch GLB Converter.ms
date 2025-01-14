@@ -268,6 +268,8 @@ blender-render.py=
 clamp-colors.bat=
 contrast.bat=
 web-request.bat=
+sketchup-convert.bat=
+template.skp=
 
 [SCRIPT]
 */
@@ -786,6 +788,309 @@ struct GCModelSplitWrapper (
 		
 		return s
 	)
+*/
+
+struct SketchupConverterWrapper (
+	currentPath = getFileNamePath (getThisScriptFileName()),
+	sketchupLocaton = @"C:\Program Files\SketchUp\",
+		
+	scn = undefined,
+	vrscene = "",
+	outFile = "",
+	tmpOut = "",
+	preview = "",
+	input = "",
+	zip = "",
+	json = #(),
+	jsonFile = "",
+	j = JsonWrapper(),
+	
+	fn archivate n o = (
+		if (not doesDirectoryExist o) do return false
+		
+		local args = n + ";" + o
+		args = substituteString args "/" @"\"
+		
+		local cmd = "archivate.bat \"" +  args + "\""
+		
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath
+		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+		
+		sysInfo.currentDir = curDir
+	),
+	fn getMaxFile o = (
+		local ptrns = #(
+			"GC-*-VRay.max",
+			"GC-*.max",
+			"*VRay*.max",
+			"*V-Ray*.max",
+			"*V_Ray*.max",
+			"*vr*.max",
+			"*.max"
+		)
+		
+		local files = getFiles (o + "*.max")
+		
+		for p in ptrns do (
+			for f in files do (
+				local ne = filenameFromPath f
+				if (MatchPattern ne pattern: p) do return f
+			)
+		)
+		
+		return undefined
+	),	
+	fn getRealName f = (		
+		local n = getFilenameFile f
+		
+		n = substituteString n "GC-Repack-" ""
+		n = substituteString n "GC-Repack" ""
+		n = substituteString n "Repack-" ""
+		n = substituteString n "repack-" ""
+		n = substituteString n "GC-" ""
+		n = substituteString n "-Corona" ""
+		n = substituteString n "-VRay" ""
+		n = substituteString n "-V-Ray" ""
+		for i in #{2010..2050} do n = substituteString n (i as string) ""
+		n = substituteString n "---" ""
+		n = substituteString n "---" ""
+		n = substituteString n "--" ""
+		n = substituteString n "--" ""
+		n = trimLeft (trimRight n "- ") "- "			
+		n = "GC-Repack-" + n
+		
+		return n
+	),
+	fn getSketchupExe = (
+		local d = (getDirectories (sketchupLocaton + "*"))[1]			
+		if (d == undefined) do return undefined
+		local b = d + "SketchUp.exe"
+		if (not doesFileExist b) do return undefined
+		return b
+	),
+	fn isSketchupExist = (
+		local b = getSketchupExe()
+		if (b == undefined) do return false
+		return true
+	),	
+	fn getFileMb f = (
+		if (not doesFileExist f) do return 0.0
+		s = (getFileSize f) / 1048576.0
+		return ((s * 100) as integer) / 100.0
+	),
+	fn getCurrentMaxVersion = (
+		local v = maxVersion()
+		v = (v[1] / 1000) - 2
+		
+		return (2000 + v) as string
+	),
+	fn polyCount s = (
+        local iPoly = 0
+		local iVert = 0
+        
+        local a = for i in s collect (getPolygonCount i)
+        for i in a do (
+			iPoly += i[1]
+			iVert += i[2]
+		)
+		
+        sPoly = iPoly as string
+        sVert = iVert as string
+		
+		return #(sPoly, sVert)
+	),	
+	fn getDim s = (
+        local d = s.max - s.min
+        
+        d = for i in 1 to 3 collect ((d[i] * 100) as integer / 100.0 ) as string
+        
+        return d[1] + " x " + d[2] + " x " + d[3]
+    ),	
+	fn getUnits = (
+        local u = trimLeft (units.SystemType as string) "#"
+        u[1] = toUpper u[1]
+        return u
+    ),
+	fn getMaterialsCnt = (
+		if (VRayMtl == undefined) do return 0
+		local cc = 0
+		
+		for o in objects do (
+			local c = (getClassInstances VRayMtl target: o).count
+			cc += c
+		)
+			
+		return cc
+	),
+	fn getVer = (
+		local s = getSketchupExe()
+		local c = filterString s @"\"
+		if (c[c.count] != "SketchUp.exe") do return "0"
+		local rr = c[c.count - 1]
+		local v = (FilterString rr " ")[2]
+		if (v == undefined) do return "0"
+		
+		return v
+	),
+	fn getRender = (		
+		local f = @"c:\Program Files\Chaos\V-Ray\V-Ray for SketchUp\extension\extension.json"
+		if (not doesFileExist f) do return "Unknown"
+		return "VRay"
+	),
+	fn changeRenderToVRay = (
+		if (matchPattern (renderers.current as string) pattern: "V_Ray*") do return true
+		try (renderers.current = VRay()) catch (return false)
+		return true
+	),
+	fn convertWithVRayUtils = (
+		local v = getCurrentMaxVersion()
+		local f = @"c:\ProgramData\Autodesk\ApplicationPlugins\VRay3dsMax" + v + @"\scripts\vrayutils.ms"
+		
+		if (doesFileExist f) do (
+			fileIn f
+			fileIn f
+			fileIn f
+			
+			CreateDialog vraySceneConverterRollout
+			try (DestroyDialog vraySceneConverterRollout) catch ()
+			CreateDialog vraySceneConverterRollout
+			
+			vraySceneConverterRollout.check_optConvertOnlySelectedNodes.checked = false
+			vraySceneConverterRollout.check_optConvertPhysicalMtl.checked = true
+			vraySceneConverterRollout.btn_convertStart.pressed()
+			vraySceneConverterRollout.visible = false
+			
+			return true
+		)
+		
+		return false
+	),
+	fn exportToVRayScene f = (
+		if (doesFileExist f) do deleteFile f
+		vrayExportVRScene f startFrame:0 endFrame:0 separateFiles: false exportLights: false exportNodes: false stripPaths: true 
+	),
+	fn runBatch bat: "sketchup-convert.bat" = (
+		local o = substituteString outFile @"\" "/"
+		local v = substituteString vrscene @"\" "/"
+		local s = getSketchupExe()
+		
+		local args = s + ";" + v + ";" + o		
+		
+		local cmd = bat + " \"" +  args + "\""
+		
+		local curDir = sysInfo.currentDir
+		sysInfo.currentDir = currentPath
+		
+		hiddenDosCommand cmd exitCode: &exitcode donotwait: false
+		
+		sysInfo.currentDir = curDir		
+	),
+	fn getFilesRecursive r pattern: "*.*" = (
+        local dd = getDirectories (r + "/*")
+        local ff = getFiles (r + "/" + pattern)
+        for i in dd do join ff (getFilesRecursive i pattern: pattern)
+        
+        return ff
+    ),
+	fn collectMaps = (
+		local p = this.input
+		local pp = this.tmpOut
+		
+		local collectTypes = #(".jpg", ".jpeg", ".png", ".tiff", ".tif", ".tga", ".bmp", ".exr", ".hdr", ".osl")
+		local ff = getFilesRecursive p
+		
+		local list = #()
+		for f in ff do (
+			local t = toLower (getFilenameType f)
+			if (findItem collectTypes t != 0) do appendIfUnique list f
+		)
+		
+		for l in list do (
+			local nn = pp + (filenameFromPath l)
+			copyFile l nn
+		)		
+	),
+	fn convertMax2Skp = (
+		if (this.scn == undefined) do return false
+		
+		local p = this.input
+		
+		loadMaxFile (this.scn) quiet: true
+		
+		local polys = polyCount objects
+		local v = getVer()
+		local r = getRender()
+		
+		this.changeRenderToVRay()
+		this.convertWithVRayUtils()
+		this.exportToVRayScene this.vrscene
+		this.collectMaps()
+		
+		this.j.addData json "scene" (maxFileName)		
+		this.j.addData this.json "program" "sketchup"
+		j.addData json "version" v
+		j.addData json "render" r
+		this.j.addData this.json "ao" false
+		this.j.addData this.json "aoType" "none"
+		this.j.addData this.json "polys" polys[1]
+		this.j.addData this.json "verts" polys[2]		
+		this.j.addData this.json "size" (getDim objects)		
+		this.j.addData this.json "units" (getUnits())
+		this.j.addData this.json "objectsCount" (objects.count)
+		this.j.addData this.json "materialsCount" (getMaterialsCnt())
+		this.j.addData json "authorsVersions" #(v)
+		this.j.addData json "versionsAndRenders" #(#(#(v, r)))
+		
+		saveMaxFile (p + "___SKP.max") quiet: true
+		try (resetMaxFile #noprompt) catch ()
+		
+		sleep 0.01
+		
+		local template = @"C:\temp\template.skp"
+		deleteFile template
+		copyFile (currentPath + "template.skp") template
+		
+		this.runBatch()
+	),
+	fn makeArchive = (			
+		archivate this.zip this.tmpOut
+		this.j.addData json "name" (filenameFromPath this.zip)						
+		this.j.addData json "sizeMb" (getFileMb this.zip)
+	),
+	fn makeJson = (
+		this.j.writeJson this.jsonFile this.json
+	),
+	
+	fn init input: "" out: ""  name: "" = (
+		this.json = #()
+		
+		local p = out
+		local pp = p + name + @"\"		
+		makeDir pp all: true
+		
+		this.input = input
+		this.scn = getMaxFile input
+		local n = getRealName this.scn
+		
+		this.preview = p + name + ".png"
+		this.vrscene = input + name + ".vrscene"
+		this.zip = p + name + "-SKP.zip"
+		this.outFile = pp + n + ".skp"
+		this.jsonFile = p + name + "-SKP.json"
+		this.tmpOut = pp
+	)
+)
+
+/*
+(	
+	local skpMgr = SketchupConverterWrapper()
+	skpMgr.init input: @"C:\Users\user\Desktop\test_skp\2241\" out: @"C:\Users\user\Desktop\test_skp\Processed\" name: "2241"
+	skpMgr.convertMax2Skp()	
+	skpMgr.makeArchive()
+	skpMgr.makeJson()	
+)
 */
 
 struct BlenderGLBWrapper (
@@ -3512,7 +3817,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				isNormalizeTiling
 			)
 			
-			local badPattern = #("*-BLEND", "*-FBX-OBJ", "*-MaxMerger", "*-MaxOriginal")
+			local badPattern = #("*-BLEND", "*-FBX-OBJ", "*-MaxMerger", "*-MaxOriginal", "*-SKP")
 			
 			for f in ff do (
 				local p = getFilenamePath f
