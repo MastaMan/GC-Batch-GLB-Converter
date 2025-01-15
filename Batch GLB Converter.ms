@@ -1004,6 +1004,8 @@ struct SketchupConverterWrapper (
 		local list = #()
 		for f in ff do (
 			local t = toLower (getFilenameType f)
+			local n = getFilenameFile f
+			if (MatchPattern n pattern: "__cache_*") do continue
 			if (findItem collectTypes t != 0) do appendIfUnique list f
 		)
 		
@@ -1071,14 +1073,21 @@ struct SketchupConverterWrapper (
 		makeDir pp all: true
 		
 		this.input = input
-		this.scn = getMaxFile input
-		local n = getRealName this.scn
+		
+		this.scn = input + "__fixed_scene.max"
+		local altScene = getMaxFile input
+		
+		if (not doesFileExist this.scn) do (
+			this.scn = altScene
+		)
+		
+		local n = getRealName altScene
 		
 		this.preview = p + name + ".png"
 		this.vrscene = input + name + ".vrscene"
-		this.zip = p + name + "-SKP.zip"
+		this.zip = p + name + ".zip"
 		this.outFile = pp + n + ".skp"
-		this.jsonFile = p + name + "-SKP.json"
+		this.jsonFile = p + name + ".json"
 		this.tmpOut = pp
 	)
 )
@@ -3580,6 +3589,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				if (id == 0 or id == undefined) do try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
 				
 				saveMaxFile (maxFilePath + maxFileName)
+				saveMaxFile (maxFilePath + "__fixed_scene.max")
 				setter "checked" "true"
 				
 				loadChecks()
@@ -3616,7 +3626,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		button btnStatusNone "Status: None" height: 24 width: 82 align: #center tooltip: "Set status None" offset: [0, 10]
 		button btnStatusSkip "Status: Skip" height: 24 width: 82 align: #right tooltip: "Skip models" offset: [0, 10]
 		
-		button btnUpload "Upload All Models " height: 24 width: 260 tooltip: "Uploads all models into the Database, if all statuses are set: Approve or Skip and all generated files exists (GLB, BLEND)" offset: [0, 10]
+		button btnUpload "Upload All Models " height: 24 width: 260 tooltip: "Uploads all models into the Database, if all statuses are set: Approve or Skip and all generated files exists (GLB, BLEND, SKP)" offset: [0, 10]
 		
 		
 		global BATCH_GLB_CONVERTER_FILES = #()
@@ -3796,9 +3806,11 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				filename, 
 				name, 
 				blnd, 
-				glb, 
+				glb,
+				skp,				
 				isGlbExist, 
 				isBlndExist, 
+				isSkpExist, 
 				type, 
 				ext, 
 				ini, 
@@ -3810,6 +3822,8 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				glbScreen,
 				blendName,
 				blendScreen,
+				skpName,
+				skpScreen,
 				approve,
 				isApprove,
 				iniProcessed,
@@ -3835,13 +3849,16 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				local glb = outPath + n + "-GLB.glb"				
 				local blnd = outPath + n + "-BLEND.zip"				
+				local skp = outPath + n + "-SKP.zip"				
 				local ini = extractPath + "glb.ini"
 				local iniProcessed = outPath + n +".ini"
 				
 				local glbName = n + "-GLB"
 				local glbScreen = outPath + glbName + ".png"
 				local blendName = n + "-BLEND"
+				local skpName = n + "-SKP"
 				local blendScreen = outPath + blendName + ".png"
+				local skpScreen = outPath + skpName + ".png"
 				
 				local type = (trimLeft ext ".") as name
 				local filename = f				
@@ -3853,6 +3870,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				local isGlbExist = doesFileExist glb
 				local isBlndExist = doesFileExist blnd
+				local isSkpExist = doesFileExist skp
 				
 				local approve = getApproveStatus id glb
 				local isApprove = approve == "Approve"
@@ -3871,8 +3889,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					filename: filename \
 					glb: glb \
 					blnd: blnd \
+					skp: skp \
 					isGlbExist: isGlbExist \
 					isBlndExist: isBlndExist \
+					isSkpExist: isSkpExist \
 					type: type \
 					ext: ext \
 					ini: ini \
@@ -3882,7 +3902,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					glbName: glbName \
 					glbScreen: glbScreen \
 					blendName: blendName \
+					skpName: skpName \
 					blendScreen: blendScreen \
+					skpScreen: skpScreen \
 					approve: approve \
 					isApprove: isApprove \
 					iniProcessed: iniProcessed \
@@ -3942,12 +3964,14 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			for i in ::BATCH_GLB_CONVERTER_FILES do (
 				local glbStatus = ""
 				local blndStatus = ""
+				local skpStatus = ""
 				local aoStatus = ""
 				local checkStatus = ""
 				local approve = ""
 				
 				if (i.isGlbExist) do glbStatus = " [GLB]"
 				if (i.isBlndExist) do blndStatus = " [BLEND]"
+				if (i.isSkpExist) do skpStatus = " [SKP]"
 				if (not i.isBakeAO) do aoStatus = " [no AO]"
 				
 				i.isChecked = getChecked i.ini				
@@ -3964,9 +3988,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					checkStatus = ""
 					glbStatus = ""
 					blndStatus = ""
+					skpStatus = ""
 				)
 				
-				append o (formatString "$1$2$3$4$5$6" v: #(approve, i.name, checkStatus, glbStatus, blndStatus, aoStatus))
+				append o (formatString "$1$2$3$4$5$6$7" v: #(approve, i.name, checkStatus, glbStatus, blndStatus, aoStatus, skpStatus))
 				if (findItem selectedNames i.name != 0) do append sel c
 				
 				c += 1
@@ -3986,6 +4011,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			for i in items do (
 				setApproveStatus i.id i.glb status: status			
 				setApproveStatus i.id i.blnd status: status
+				setApproveStatus i.id i.skp status: status
 			)
 			
 			updateLbx()
@@ -4016,10 +4042,23 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			if (ss.count == 0) do return messageBox "Please select [Checked] items from list!" title: "Warning!"
 			
 			local blendGLBMgr = BlenderGLBWrapper()
+			local skpMgr = SketchupConverterWrapper()
 			
 			-- If Blender not exist!
 			if (::_rBatchGCGLBConverterSettings.cbxMakeBlend.checked and not blendGLBMgr.isBlenderExist()) do (
 				messageBox "Blender not installed!" title: "Error!"
+				return false
+			)
+			
+			-- If SketchUp not exist!
+			if (::_rBatchGCGLBConverterSettings.cbxMakeSkp.checked and not skpMgr.isSketchupExist()) do (
+				messageBox "SketchUp not installed!" title: "Error!"
+				return false
+			)
+			
+			-- Is SketchUp render VRay!
+			if (::_rBatchGCGLBConverterSettings.cbxMakeSkp.checked and skpMgr.getRender() != "VRay") do (
+				messageBox "VRay not installed for SketchUp!" title: "Error!"
 				return false
 			)
 			
@@ -4107,6 +4146,13 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 						blendGLBMgr.makeArchive()
 						blendGLBMgr.makeJson()					
 					)
+					
+					if (::_rBatchGCGLBConverterSettings.cbxMakeSkp.checked) do (
+						skpMgr.init input: pp out: outPath name: f.skpName
+						skpMgr.convertMax2Skp()	
+						skpMgr.makeArchive()
+						skpMgr.makeJson()	
+					)
 				)
 				
 				if (getProgressCancel() or keyboard.escPressed) do return false
@@ -4151,8 +4197,6 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			escapeEnable = true
 			clearListener()
 			
-			print ss
-			
 			SceneConverter.BackupOriginalFiles = false
  			
  			for i in ss do (
@@ -4162,7 +4206,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
  			)
 			
 			try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
- 				
+			
 			lbxList.selection = ss
 			startBatchExport type: #autoConvert
 			
@@ -4334,6 +4378,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 						
 						delApproveStatus id i.glb
 						delApproveStatus id i.blnd
+						delApproveStatus id i.skp
 						
 						c += 1
 					)
@@ -4575,6 +4620,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		
 		group "Additional Formats" (
 			checkbox cbxMakeBlend "Blender (.blend)"	
+			checkbox cbxMakeSkp "SketchUp (.skp)"	
 		)
 		
 		fn setMode mode: #prod = (
@@ -4626,6 +4672,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			cbxUseXNormalAO.checked = '*'.get "cbxUseXNormalAO" type: #bool_true
 			cbxAODenoiseXNormal.checked = '*'.get "cbxAODenoiseXNormal" type: #bool_false
 			cbxMakeBlend.checked = '*'.get "cbxMakeBlend" type: #bool_false
+			cbxMakeSkp.checked = '*'.get "cbxMakeSkp" type: #bool_false
 			
 			if (cbxUseXNormalAO.checked) do (
 				cbxUseCoronaAO.checked = false
@@ -4655,6 +4702,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		on spnAOXNormalResolution changed v do '*'.add  "spnAOXNormalResolution" v	
 		on cbxAODenoiseXNormal changed v do '*'.add  "cbxAODenoiseXNormal" v		
 		on cbxMakeBlend changed v do '*'.add  "cbxMakeBlend" v		
+		on cbxMakeSkp changed v do '*'.add  "cbxMakeSkp" v		
 		
 		on cbxUseCoronaAO changed v do (			
 			'*'.add  "cbxUseXNormalAO" false
