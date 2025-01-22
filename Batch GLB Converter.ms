@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.5.2
+VERSION=1.5.3
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -236,6 +236,9 @@ Script for bulk conversion models to GLB=
 
 [1.5.2]
 - BugFix: Fatal error with checked=
+
+[1.5.3]
++ Added: Support SKP format=
 
 [FILES]
 Install.mcr=
