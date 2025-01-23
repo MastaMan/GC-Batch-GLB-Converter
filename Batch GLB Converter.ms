@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.5.3
+VERSION=1.5.4
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -239,6 +239,10 @@ Script for bulk conversion models to GLB=
 
 [1.5.3]
 + Added: Support SKP format=
+
+[1.5.4]
++ Added: Support GLB WebGL=
++ Added: Clear cached *.skb files after coversion for SketchUp=
 
 [FILES]
 Install.mcr=
@@ -931,7 +935,11 @@ struct SketchupConverterWrapper (
 	fn makeScreensot = (
 		local s = substituteString this.glb ".glb" ".png"
 		copyFile s this.preview
-	),	
+	),
+	fn clearCache = (
+		local ff = getFiles (this.tmpOut + "*.skb")
+		for f in ff do deleteFile f
+	),
 	fn convertMax2Skp = (
 		local polys = polyCount objects
 		local v = getVer()
@@ -961,6 +969,8 @@ struct SketchupConverterWrapper (
 		this.runBatch()
 		
 		this.makeScreensot()
+		
+		this.clearCache()
 	),
 	/*fn makeArchive = (			
 		archivate this.zip this.tmpOut
@@ -2784,8 +2794,8 @@ struct BatchGLBConverterWrapper (
 		saveMaxFile (p + "GLB.max") quiet: true
 	),
 	
-	fn packGLTF i o = (
-		local args = i + ";" + o
+	fn packGLTF i o o2 = (
+		local args = i + ";" + o + ";" + o2
 		args = substituteString args "/" @"\"
 		
 		local cmd = "gltfpack.bat \"" +  args + "\""
@@ -2809,13 +2819,15 @@ struct BatchGLBConverterWrapper (
 		makeDir pp all: true
 		local i = pp + n + ".gltf"
 		local o = p + n + ".glb"
+		local o2 = p + n + "-WEBGL.glb"
 		local preview = p + n + ".png"
 		
 		deleteFile o
+		deleteFile o2
 		exportFile i #noPrompt selectedOnly: true
 		deleteFile (i + ".log")
 		
-		packGLTF i o
+		packGLTF i o o2
 		
 		-- JSON: Filename
 		this.j.addData this.json "version" (getCurrentMaxVersion())
