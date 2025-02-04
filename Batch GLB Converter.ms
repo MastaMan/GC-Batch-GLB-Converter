@@ -253,6 +253,7 @@ Script for bulk conversion models to GLB=
 + Added: List size depends on download count=
 * Changed: Neutralize Falloff=
 - BugFix: Stuck on Auto Convert due modal window=
+- BugFix: Small fixes=
 
 
 [FILES]
