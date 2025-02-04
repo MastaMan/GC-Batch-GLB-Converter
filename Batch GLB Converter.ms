@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.5.4
+VERSION=1.5.6
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -244,6 +244,17 @@ Script for bulk conversion models to GLB=
 + Added: Support GLB WebGL=
 + Added: Clear cached *.skb files after coversion for SketchUp=
 
+[1.5.5]
++ Added: Skip scene if polycount more then 250k for Auto Convert=
+
+[1.5.6]
++ Added: enableGammaCoronaNormal=
++ Added: Box trick for Auto Convert=
++ Added: List size depends on download count=
+* Changed: Neutralize Falloff=
+- BugFix: Stuck on Auto Convert due modal window=
+
+
 [FILES]
 Install.mcr=
 jpegoptim.exe=
@@ -286,6 +297,42 @@ template.skp=
 	Transluency -> Transmission
 
 */
+
+global _MAX_ALLOWED_POLYS = 250000
+
+struct utilsWrapper (
+	fn maxVer  = (
+		local v = (maxVersion())[1]
+		v = 2000 + ((v / 1000) - 2)
+		return v
+	),
+	fn boost = (
+		windows.processPostedMessages() 
+	),	
+	fn formatString s v: #() tag: "$" = (
+		for i in 1 to v.count  do (
+			local t = v[i] as string
+			s = substituteString s (tag + i as string) (t)
+		)
+		
+		return s
+	),
+	fn trim s tag: " "= (
+		return trimLeft (trimRight s tag) tag
+	),
+	fn polyCount s = (
+		local iPoly = 0
+		local iVert = 0
+		
+		local a = for i in s collect (getPolygonCount i)
+		for i in a do (
+			iPoly += i[1]
+			iVert += i[2]
+		)
+		
+		return #(iPoly, iVert)
+	)
+)
 
 struct getMaxDataWrapper (
 	currentPath = getFileNamePath (getThisScriptFileName()),
@@ -1679,6 +1726,19 @@ struct BatchGLBConverterWrapper (
 		return o.material != undefined and isValidNode o and not isDeleted o and canConvertTo o Editable_mesh
 	),
 	
+	fn getDependents m = (
+		return for r in refs.dependents m where isKindOf r textureMap or isKindOf r Material collect r
+	),
+	
+	fn getRefSlotId m ref out: undefined = (	
+		for i in 1 to getNumSubTexmaps m do (
+			local sm = getSubTexmap m i		
+			if (sm == ref) do return i
+		)
+		
+		return undefined
+	),
+	
 	fn ungroupRecursive = (
 		local s = objects
 		fn tmpUngroup s = (
@@ -2162,7 +2222,7 @@ struct BatchGLBConverterWrapper (
 		)
 	),
 	
-	fn neutralizeFalloff = (
+	/* fn neutralizeFalloff = (
 		for i in getClassInstances Falloff do (
 			local nm = Mix()
 			nm.name = i.name
@@ -2181,6 +2241,20 @@ struct BatchGLBConverterWrapper (
 			if (nm.map2 == undefined) do nm.map2 = nm.map1
 			
 			replaceInstances i nm
+		)
+	), */
+	
+	fn neutralizeFalloff = (
+		for f in getClassInstances Falloff do (
+			for m in getDependents f do (
+				local id = getRefSlotId m f
+				if (id == undefined) do continue
+				
+				local nm = f.map1
+				if (nm == undefined) do nm = f.map2
+				
+				setSubTexmap m id nm
+			)
 		)
 	),
 	
@@ -2245,6 +2319,12 @@ struct BatchGLBConverterWrapper (
 			if (i.Refraction == black) do continue
 			
 			i.Diffuse = i.refraction_fogColor
+		)
+	),
+	
+	fn enableGammaCoronaNormal= (
+		for i in getClassInstances CoronaNormal do (
+			i.addGamma = true
 		)
 	),
 	
@@ -2929,7 +3009,7 @@ struct BatchGLBConverterWrapper (
 		-- Purge cache
 		this.clearCacheMapsDir()
 		
-		-- Convert all to Corona Physical Mtl
+		-- @@ Convert all to Corona Physical Mtl
 		this.convertToCorona()
 		
 		-- Bitmap instansing
@@ -2938,6 +3018,7 @@ struct BatchGLBConverterWrapper (
 		local falloffMaterials = this.getMaterialsWithFalloff()
 		
 		-- Simplify maps
+		this.enableGammaCoronaNormal()
 		this.neutralizeFalloff()
 		this.neutralizeCoronaAO()
 		this.neutralizeRaySwitch()
@@ -3158,7 +3239,7 @@ try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
 
 if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 
-	global floaterBatchGLBConverter = newRolloutFloater "GLB Converter" 300 890
+	global floaterBatchGLBConverter = newRolloutFloater "GLB Converter" 300 840
 
 	fn checkArchiveForErrors type: #default = (
 		try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
@@ -3187,19 +3268,6 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			local current = undefined
 			
-			fn polyCount s = (
-				local iPoly = 0
-				local iVert = 0
-				
-				local a = for i in s collect (getPolygonCount i)
-				for i in a do (
-					iPoly += i[1]
-					iVert += i[2]
-				)
-				
-				return #(iPoly, iVert)
-			)
-			
 			fn formatNumberWithSpaces n = (
 				local numberStr = (n as string)
 				local s = ""
@@ -3224,8 +3292,6 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				return s
 			)
 			
-			fn boost = if (((maxVersion())[1] / 1000) >= 13) do windows.processPostedMessages() 
-			
 			fn getter k = (
 				if (current == undefined or current.ini == undefined) do return ""
 				return getINISetting current.ini "index" k
@@ -3242,7 +3308,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				local isChecked = (getter "checked") == "true"
 				local isCheckedText = if (isChecked) then "Yes" else "No"
 				local comment = _rBatchGCGLBConverter.getComment current.id
-				local polys = polyCount objects
+				local polys = (utilsWrapper()).polyCount objects
 				
 				lblName.caption = formatString "Name: $1" v: #(n)
 				lblIsChecked.caption = formatString "Is Checked: $1" v: #(isCheckedText)
@@ -3253,10 +3319,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				
 				local polysStr = formatString "Polys: $1" v: #(formatNumberWithSpaces polys[1])  
 				 
-				if (polys[1] > 250000) do polysStr = polysStr + " [!]"
+				if (polys[1] > _MAX_ALLOWED_POLYS) do polysStr = polysStr + " [!]"
 				lblPolys.caption = polysStr
 				
-				boost()
+				(utilsWrapper()).boost()
 			)
 			
 			fn setPos = (
@@ -3373,6 +3439,22 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				base.name = getFilenameFile maxFileName
 			)
 			
+			fn boxTrick = (
+				local oo = geometry as array
+				
+				for o in oo where isValidNode o do (
+					local b = convertToPoly (box())
+					b.rotation = o.rotation
+					b.name = o.name
+					b.pos = o.pos
+					b.wirecolor = o.wirecolor
+					
+					polyOp.deleteFaces b #{1..6}		
+					polyOp.attach b o
+					convertToMesh b			
+				)
+			)
+			
 			fn setSnenePivotBottom = (
 				MaxOps.pivotMode = #pivotOnly
 				
@@ -3384,9 +3466,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 					i.pivot.z = bottom
 					i.pos = [0, 0, 0]
 				)
+				
+				MaxOps.pivotMode = #none
 			)
-
-			
 			
 			on cbxKillTiling changed a do (
 				setter "kill_tiling" a
@@ -3433,7 +3515,9 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				local maxFiles = getFiles (current.extractPath + "*.max")
 				if (maxFiles.count == 0) then (
 					::_rBatchGCGLBConverter.setModelStatus status: #skip
-					messageBox "Not found *.max files in archive.\nAutomatically applied Skip status!" title: "Error!"				
+					if (checkType != #autoConvert) do (
+						messageBox "Not found *.max files in archive.\nAutomatically applied Skip status!" title: "Error!"				
+					)
 				) else if (isErrorOpen) do (
 					messageBox "Error while opening scene!\nTry to clear extracted files and repeat againg!" title: "Error!"
 				)
@@ -3453,13 +3537,20 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				enableBackFaceCull()
 				setMapsVisible()
 				
+				local polys = (utilsWrapper()).polyCount objects
+				
 				if (::checkType == #autoConvert) do (
-					setter "bake_ao" "false"
-					explodeAllGroups()
-					disableIsolineDisplayForSmooth()
-					resetXForAllObjects()
-					attachSceneObjects()
-					setSnenePivotBottom()
+					if (polys[1] <= _MAX_ALLOWED_POLYS) then (
+						setter "bake_ao" "false"
+						explodeAllGroups()
+						disableIsolineDisplayForSmooth()
+						boxTrick()
+						resetXForAllObjects()
+						attachSceneObjects()
+						setSnenePivotBottom()
+					) else (
+						logging ((utilsWrapper()).formatString "Skip Auto Convert: $1 due max polys reached (Limit: $2)" v: #(maxFileName, _MAX_ALLOWED_POLYS))
+					)
 				)
 				
 				updateUI()
@@ -3496,7 +3587,6 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				if (id == 0 or id == undefined) do try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
 				
 				saveMaxFile (maxFilePath + maxFileName)
-				saveMaxFile (maxFilePath + "__fixed_scene.max")
 				setter "checked" "true"
 				
 				loadChecks()
@@ -3516,7 +3606,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		edittext edtInputPath "" readonly: true across: 2 align: #left fieldwidth: 215 height: 22 tooltip: "Select a folder to download models"	
 		button btnSearchInputPath "..." width: 35 height: 24  align: #right offset: [0, -1]		
 			
-		multilistbox lbxList "" items: #() height: 45
+		multilistbox lbxList "" items: #() height: (::_rBatchGCGLBConverterSettings.spnDownloadQueueQuantity.value)
 		label lblStatus "Selected items for export: 0" align: #right
 		--button btnSelectAll "Select All" align: #center width: 100 across: 2
 		--button btnDeselect "Deselect" align: #center width: 100
@@ -4012,6 +4102,13 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				loadMaxFile (f.scene) quiet: true
 				if (maxFileName == "") do continue
 				
+				local polys = (utilsWrapper()).polyCount objects
+				
+				-- Skip if polys more 250k
+				if (type == #autoConvert) do (
+					if (polys[1] > _MAX_ALLOWED_POLYS) do continue
+				)
+				
 				struct scn (file, path, name, ext, type, del, opened, maxName)
 				local r = scn()
 				
@@ -4472,9 +4569,14 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 		
 		
 		on _rBatchGCGLBConverter open do (
-			loadSettings()
-			
+			loadSettings()			
 			updateLbx()
+			
+			local count = ::_rBatchGCGLBConverterSettings.spnDownloadQueueQuantity.value
+			
+			local s = ::floaterBatchGLBConverter.size
+			local h = count * 13 + 310
+			::floaterBatchGLBConverter.size = [s[1], h]
 			
 			try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
 		)
