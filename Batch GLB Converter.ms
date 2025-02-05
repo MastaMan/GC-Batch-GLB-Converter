@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.5.6
+VERSION=1.5.7
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -255,6 +255,11 @@ Script for bulk conversion models to GLB=
 - BugFix: Stuck on Auto Convert due modal window=
 - BugFix: Small fixes and improvements=
 
+[1.5.7]
+* Changed: Don't save scene if polys more 250k for Auto Convert=
+* Changed: Unfreeze and unhide methods rewrited as loops=
+- BugFix: Modal window when unfreeze all=
+
 
 [FILES]
 Install.mcr=
@@ -300,6 +305,7 @@ template.skp=
 */
 
 global _MAX_ALLOWED_POLYS = 250000
+global _SKIP_CURRENT_MAX_SCENE = false
 
 struct utilsWrapper (
 	fn maxVer  = (
@@ -3401,6 +3407,14 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				)
 			)
 			
+			fn unfreezeAll = (
+				for i in objects do try (i.isFrozen = false) catch ()
+			)
+			
+			fn unhideAll = (
+				for i in objects do try (i.isHidden = false) catch ()
+			)
+			
 			fn explodeAllGroups = (				
 				local gg = for o in objects where isGroupHead o collect o
 				for g in gg do try (explodeGroup g) catch ()
@@ -3481,6 +3495,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			on _rBatchGCGLBChecker open do (
 				setPos()
+				::_SKIP_CURRENT_MAX_SCENE = false
 				
 				local f = ::BATCH_GLB_CONVERTER_FILES
 				local lbx = _rBatchGCGLBConverter.lbxList
@@ -3531,12 +3546,12 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				loadChecks()
 				
 				max tool zoomextents
-				max tool maximize
-				max views redraw
-				max unfreeze all
-				max unhide all
+				max tool maximize				
+				unfreezeAll()
+				unhideAll()
 				enableBackFaceCull()
 				setMapsVisible()
+				max views redraw
 				
 				local polys = (utilsWrapper()).polyCount objects
 				
@@ -3550,6 +3565,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 						attachSceneObjects()
 						setSnenePivotBottom()
 					) else (
+						::_SKIP_CURRENT_MAX_SCENE = true
 						logging ((utilsWrapper()).formatString "Skip Auto Convert: $1 due max polys reached (Limit: $2)" v: #(maxFileName, _MAX_ALLOWED_POLYS))
 					)
 				)
@@ -3559,7 +3575,6 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 				btnSave.enabled = true
 				cbxKillTiling.enabled = true
 				cbxBakeAO.enabled = true
-				
 				
 				try (::_rBatchGCGLBConverter.updateLbx()) catch ()
 			)
@@ -4199,8 +4214,10 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
  			
  			for i in ss do (
  				lbxList.selection =#{i}
- 				checkArchiveForErrors type: #autoConvert 				
- 				::_rBatchGCGLBChecker.btnSave.pressed()								
+ 				checkArchiveForErrors type: #autoConvert
+				if (not ::_SKIP_CURRENT_MAX_SCENE) do (
+					::_rBatchGCGLBChecker.btnSave.pressed()
+				)
  			)
 			
 			try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
