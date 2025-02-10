@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.5.7
+VERSION=1.5.8
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -259,6 +259,11 @@ Script for bulk conversion models to GLB=
 * Changed: Don't save scene if polys more 250k for Auto Convert=
 * Changed: Unfreeze and unhide methods rewrited as loops=
 - BugFix: Modal window when unfreeze all=
+
+[1.5.8]
+* Changed: Fixed floater height=
+- BugFix: GLB WebGL AR mesh error=
+- BugFix: Don't rewrite screenshot for WebGL GLB=
 
 
 [FILES]
@@ -988,6 +993,7 @@ struct SketchupConverterWrapper (
 	),
 	fn makeScreensot = (
 		local s = substituteString this.glb ".glb" ".png"
+		deleteFile this.preview
 		copyFile s this.preview
 	),
 	fn clearCache = (
@@ -4594,7 +4600,7 @@ if (::BATCH_GLB_CONVERTER_SUPPRESS_GUI != true) do (
 			
 			local s = ::floaterBatchGLBConverter.size
 			local h = count * 13 + 310
-			::floaterBatchGLBConverter.size = [s[1], h]
+			--::floaterBatchGLBConverter.size = [s[1], h]
 			
 			try (DestroyDialog ::_rBatchGCGLBChecker) catch ()
 		)
