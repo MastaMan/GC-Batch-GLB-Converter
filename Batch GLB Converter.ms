@@ -1,7 +1,7 @@
 /*  
 [INFO] 
 NAME=Batch GLB Converter
-VERSION=1.5.8
+VERSION=1.5.9
 AUTHOR=MastaMan
 DEV=https://3dground.net
 HELP=
@@ -264,6 +264,9 @@ Script for bulk conversion models to GLB=
 * Changed: Fixed floater height=
 - BugFix: GLB WebGL AR mesh error=
 - BugFix: Don't rewrite screenshot for WebGL GLB=
+
+[1.5.9]
+* Changed: Write detailed AWS log to temp folder=
 
 
 [FILES]
